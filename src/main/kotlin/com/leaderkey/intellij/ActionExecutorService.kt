@@ -27,8 +27,16 @@ class ActionExecutorService {
     )
 
     fun executeAction(actionId: String): ExecutionResult {
+        return executeActionInternal(actionId, waitForCompletion = false)
+    }
+    
+    private fun executeActionAndWait(actionId: String): ExecutionResult {
+        return executeActionInternal(actionId, waitForCompletion = true)
+    }
+    
+    private fun executeActionInternal(actionId: String, waitForCompletion: Boolean): ExecutionResult {
         return try {
-            LOG.info("Starting execution of action: $actionId")
+            LOG.info("Starting execution of action: $actionId (wait=$waitForCompletion)")
             LOG.info("Current thread: ${Thread.currentThread().name}")
             LOG.info("Is EDT: ${SwingUtilities.isEventDispatchThread()}")
             
@@ -72,21 +80,58 @@ class ActionExecutorService {
                 return ExecutionResult(false, actionId, error = "Action is disabled in current context")
             }
             
-            // Execute the action asynchronously - don't wait for completion
             LOG.info("About to perform action: $actionId")
             
-            // Always use invokeLater to avoid blocking on dialog actions
-            ApplicationManager.getApplication().invokeLater {
-                try {
-                    LOG.info("Executing action on EDT: $actionId")
-                    action.actionPerformed(event)
-                    LOG.info("Action completed: $actionId")
-                } catch (e: Exception) {
-                    LOG.error("Error in action execution: $actionId", e)
+            if (waitForCompletion && !isDialogAction(actionId)) {
+                // For non-dialog actions in a sequence, wait for completion
+                var executionException: Exception? = null
+                
+                if (ApplicationManager.getApplication().isDispatchThread) {
+                    // If we're already on EDT, just execute directly
+                    try {
+                        LOG.info("Executing action directly on EDT: $actionId")
+                        action.actionPerformed(event)
+                        LOG.info("Action completed directly: $actionId")
+                    } catch (e: Exception) {
+                        LOG.error("Error in direct action execution: $actionId", e)
+                        executionException = e
+                    }
+                } else {
+                    // If not on EDT, use invokeAndWait
+                    ApplicationManager.getApplication().invokeAndWait {
+                        try {
+                            LOG.info("Executing action synchronously via invokeAndWait: $actionId")
+                            action.actionPerformed(event)
+                            LOG.info("Action completed synchronously: $actionId")
+                        } catch (e: Exception) {
+                            LOG.error("Error in synchronous action execution: $actionId", e)
+                            executionException = e
+                        }
+                    }
+                }
+                
+                if (executionException != null) {
+                    return ExecutionResult(false, actionId, error = executionException?.message)
+                }
+                
+                // For UI actions, give a small delay for UI to update
+                if (isUIAction(actionId)) {
+                    Thread.sleep(50)
+                }
+            } else {
+                // For dialog actions or single executions, use async
+                ApplicationManager.getApplication().invokeLater {
+                    try {
+                        LOG.info("Executing action asynchronously on EDT: $actionId")
+                        action.actionPerformed(event)
+                        LOG.info("Action completed asynchronously: $actionId")
+                    } catch (e: Exception) {
+                        LOG.error("Error in asynchronous action execution: $actionId", e)
+                    }
                 }
             }
             
-            LOG.info("Returning success immediately for: $actionId")
+            LOG.info("Returning success for: $actionId")
             ExecutionResult(true, actionId, "Action triggered successfully")
         } catch (e: Exception) {
             LOG.error("Failed to execute action: $actionId", e)
@@ -94,23 +139,56 @@ class ActionExecutorService {
         }
     }
     
-    fun executeActions(actionIds: List<String>, delayMs: Long = 100): List<ExecutionResult> {
+    private fun isDialogAction(actionId: String): Boolean {
+        // Actions that typically open dialogs and should not block
+        val dialogActions = setOf(
+            "About", "ShowSettings", "ShowProjectStructureSettings",
+            "CheckinProject", "Git.CompareWithBranch", "Git.Branches",
+            "RefactoringMenu", "RenameElement", "Move", "ExtractMethod"
+        )
+        return dialogActions.contains(actionId)
+    }
+    
+    private fun isUIAction(actionId: String): Boolean {
+        // Actions that manipulate UI and need time to update
+        val uiActions = setOf(
+            "ActivateProjectToolWindow", "ActivateStructureToolWindow",
+            "ActivateFavoritesToolWindow", "ActivateVersionControlToolWindow",
+            "SplitVertically", "SplitHorizontally", "NextSplitter",
+            "MaximizeToolWindow", "HideAllWindows", "Tree-selectFirst"
+        )
+        return uiActions.contains(actionId)
+    }
+    
+    fun executeActions(actionIds: List<String>, delayMs: Long = 250): List<ExecutionResult> {
         val results = mutableListOf<ExecutionResult>()
         
-        for (actionId in actionIds) {
-            val result = executeAction(actionId)
+        for ((index, actionId) in actionIds.withIndex()) {
+            LOG.info("Executing action ${index + 1}/${actionIds.size}: $actionId")
+            
+            // Use synchronous execution for all actions in a chain to ensure proper sequencing
+            val result = executeActionAndWait(actionId)
             results.add(result)
             
             if (!result.success) {
-                LOG.warn("Stopping action chain due to failure: ${result.error}")
+                LOG.warn("Stopping action chain due to failure at action '$actionId': ${result.error}")
                 break
             }
             
-            if (delayMs > 0 && actionId != actionIds.last()) {
+            // Add delay between actions (increased default to 250ms for better UI responsiveness)
+            if (delayMs > 0 && index < actionIds.size - 1) {
+                LOG.info("Waiting ${delayMs}ms before next action")
                 Thread.sleep(delayMs)
+                
+                // For UI actions, check if the next action needs more time
+                if (isUIAction(actionId)) {
+                    // Give extra time for UI actions to fully complete
+                    Thread.sleep(100)
+                }
             }
         }
         
+        LOG.info("Action chain completed. ${results.count { it.success }}/${actionIds.size} succeeded")
         return results
     }
     

@@ -2,6 +2,22 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.0.9] - 2025-08-14
+
+### Fixed
+- Multiple actions now execute sequentially with proper completion waiting
+- Actions like `Tree-selectFirst` now work correctly after UI actions
+- Increased default delay between actions from 100ms to 250ms for better UI responsiveness
+
+### Changed
+- Implemented synchronous action execution using `invokeAndWait` for action chains
+- Added intelligent action categorization (dialog actions vs UI actions)
+- Added extra delays for UI actions to ensure proper state updates
+
+### Improved
+- Better logging for action chain execution progress
+- More detailed error reporting for failed actions in chains
+
 ## [1.0.8] - 2025-08-14
 
 ### Added
