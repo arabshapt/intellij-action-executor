@@ -1,6 +1,6 @@
 # IntelliJ Action Executor
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
+[![Version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 

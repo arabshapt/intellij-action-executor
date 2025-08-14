@@ -1,6 +1,7 @@
 package com.leaderkey.intellij
 
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -69,49 +70,30 @@ class ActionExecutorService {
             // Create comprehensive data context with all available information
             val dataContext = createComprehensiveDataContext(project)
             
+            // Use ataman's approach - always use KEYBOARD_SHORTCUT
             val presentation = Presentation()
-            
-            // Determine the best action place based on the action and context
-            val actionPlace = when {
-                actionId.contains("Copy") || actionId.contains("Paste") -> ActionPlaces.EDITOR_POPUP
-                actionId.contains("Git") || actionId.contains("Vcs") -> ActionPlaces.EDITOR_POPUP
-                actionId.contains("Project") -> ActionPlaces.PROJECT_VIEW_POPUP
-                actionId.contains("Refactor") -> ActionPlaces.EDITOR_POPUP
-                else -> ActionPlaces.MAIN_MENU
-            }
-            
-            LOG.info("Using action place: $actionPlace for action: $actionId")
-            
             val event = AnActionEvent(
                 null,
                 dataContext,
-                actionPlace,
+                ActionPlaces.KEYBOARD_SHORTCUT,
                 presentation,
                 actionManager,
                 0
             )
             
-            LOG.info("Created AnActionEvent")
+            LOG.info("Created AnActionEvent with KEYBOARD_SHORTCUT place")
             
-            // Update and check if enabled
-            action.update(event)
-            LOG.info("Action enabled: ${event.presentation.isEnabled}")
+            // Use ActionUtil to properly update and check if enabled
+            ActionUtil.performDumbAwareUpdate(action, event, true)
+            LOG.info("Action enabled after update: ${event.presentation.isEnabled}")
             
             if (!event.presentation.isEnabled) {
                 LOG.warn("Action is disabled: $actionId")
                 LOG.warn("Data context details - Has editor: ${dataContext.getData(CommonDataKeys.EDITOR) != null}, " +
                         "Has file: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null}, " +
                         "Has file array: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.size ?: 0}, " +
-                        "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}, " +
-                        "Action place: $actionPlace")
-                
-                // For CopyPaths specifically, try forcing it to be enabled
-                if (actionId == "CopyPaths" && dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.isNotEmpty() == true) {
-                    LOG.warn("Forcing CopyPaths to be enabled since we have files")
-                    event.presentation.isEnabled = true
-                } else {
-                    return ExecutionResult(false, actionId, error = "Action is disabled in current context")
-                }
+                        "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}")
+                return ExecutionResult(false, actionId, error = "Action is disabled in current context")
             }
             
             LOG.info("About to perform action: $actionId")
@@ -124,7 +106,7 @@ class ActionExecutorService {
                     // If we're already on EDT, just execute directly
                     try {
                         LOG.info("Executing action directly on EDT: $actionId")
-                        action.actionPerformed(event)
+                        ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
                         LOG.info("Action completed directly: $actionId")
                     } catch (e: Exception) {
                         LOG.error("Error in direct action execution: $actionId", e)
@@ -135,7 +117,7 @@ class ActionExecutorService {
                     ApplicationManager.getApplication().invokeAndWait {
                         try {
                             LOG.info("Executing action synchronously via invokeAndWait: $actionId")
-                            action.actionPerformed(event)
+                            ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
                             LOG.info("Action completed synchronously: $actionId")
                         } catch (e: Exception) {
                             LOG.error("Error in synchronous action execution: $actionId", e)
@@ -157,7 +139,7 @@ class ActionExecutorService {
                 ApplicationManager.getApplication().invokeLater {
                     try {
                         LOG.info("Executing action asynchronously on EDT: $actionId")
-                        action.actionPerformed(event)
+                        ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
                         LOG.info("Action completed asynchronously: $actionId")
                     } catch (e: Exception) {
                         LOG.error("Error in asynchronous action execution: $actionId", e)
