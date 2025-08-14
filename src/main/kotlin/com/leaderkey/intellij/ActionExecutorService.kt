@@ -70,10 +70,22 @@ class ActionExecutorService {
             val dataContext = createComprehensiveDataContext(project)
             
             val presentation = Presentation()
+            
+            // Determine the best action place based on the action and context
+            val actionPlace = when {
+                actionId.contains("Copy") || actionId.contains("Paste") -> ActionPlaces.EDITOR_POPUP
+                actionId.contains("Git") || actionId.contains("Vcs") -> ActionPlaces.EDITOR_POPUP
+                actionId.contains("Project") -> ActionPlaces.PROJECT_VIEW_POPUP
+                actionId.contains("Refactor") -> ActionPlaces.EDITOR_POPUP
+                else -> ActionPlaces.MAIN_MENU
+            }
+            
+            LOG.info("Using action place: $actionPlace for action: $actionId")
+            
             val event = AnActionEvent(
                 null,
                 dataContext,
-                ActionPlaces.UNKNOWN,
+                actionPlace,
                 presentation,
                 actionManager,
                 0
@@ -87,7 +99,19 @@ class ActionExecutorService {
             
             if (!event.presentation.isEnabled) {
                 LOG.warn("Action is disabled: $actionId")
-                return ExecutionResult(false, actionId, error = "Action is disabled in current context")
+                LOG.warn("Data context details - Has editor: ${dataContext.getData(CommonDataKeys.EDITOR) != null}, " +
+                        "Has file: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null}, " +
+                        "Has file array: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.size ?: 0}, " +
+                        "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}, " +
+                        "Action place: $actionPlace")
+                
+                // For CopyPaths specifically, try forcing it to be enabled
+                if (actionId == "CopyPaths" && dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.isNotEmpty() == true) {
+                    LOG.warn("Forcing CopyPaths to be enabled since we have files")
+                    event.presentation.isEnabled = true
+                } else {
+                    return ExecutionResult(false, actionId, error = "Action is disabled in current context")
+                }
             }
             
             LOG.info("About to perform action: $actionId")
@@ -267,21 +291,32 @@ class ActionExecutorService {
             // Core context
             .add(CommonDataKeys.PROJECT, project)
             .add(CommonDataKeys.EDITOR, editor)
+            .add(CommonDataKeys.HOST_EDITOR, editor) // Some actions check for HOST_EDITOR
             .add(CommonDataKeys.VIRTUAL_FILE, virtualFile)
             .add(CommonDataKeys.PSI_FILE, psiFile)
             
-        // Add arrays if not null
-        selectedFiles?.let { builder.add(CommonDataKeys.VIRTUAL_FILE_ARRAY, it) }
+        // Add arrays if not null - ensure we always have an array even if empty
+        if (selectedFiles != null) {
+            builder.add(CommonDataKeys.VIRTUAL_FILE_ARRAY, selectedFiles)
+        } else if (virtualFile != null) {
+            // If no selected files but we have a current file, use it as the array
+            builder.add(CommonDataKeys.VIRTUAL_FILE_ARRAY, arrayOf(virtualFile))
+        } else {
+            // Provide empty array to avoid null checks in actions
+            builder.add(CommonDataKeys.VIRTUAL_FILE_ARRAY, emptyArray<VirtualFile>())
+        }
         
         // Add PSI elements
         if (psiFile != null) {
             builder.add(CommonDataKeys.PSI_ELEMENT, psiFile)
+            builder.add(LangDataKeys.PSI_ELEMENT_ARRAY, arrayOf(psiFile))
         }
         
         // Editor context
         editor?.let {
             builder.add(CommonDataKeys.CARET, it.caretModel.currentCaret)
             builder.add(CommonDataKeys.EDITOR_VIRTUAL_SPACE, false)
+            builder.add(PlatformDataKeys.CONTEXT_COMPONENT, it.contentComponent)
         }
         
         // Module context
@@ -330,6 +365,35 @@ class ActionExecutorService {
         // Then try from FileEditorManager
         FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.let {
             LOG.info("Got virtual file from FileEditorManager: ${it.name}")
+            return it
+        }
+        
+        // Try to get from project view selection
+        try {
+            val projectView = ProjectView.getInstance(project)
+            val selectedElements = projectView.currentProjectViewPane?.selectedElements
+            selectedElements?.firstOrNull()?.let { element ->
+                when (element) {
+                    is PsiFile -> element.virtualFile?.let {
+                        LOG.info("Got virtual file from project view: ${it.name}")
+                        return it
+                    }
+                    is VirtualFile -> {
+                        LOG.info("Got virtual file directly from project view: ${element.name}")
+                        return element
+                    }
+                    else -> {
+                        LOG.debug("Selected element is not a file: ${element?.javaClass?.simpleName}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            LOG.debug("Could not get file from project view: ${e.message}")
+        }
+        
+        // Last resort - try to get project base directory
+        project.baseDir?.let {
+            LOG.info("Using project base directory as fallback: ${it.name}")
             return it
         }
         
