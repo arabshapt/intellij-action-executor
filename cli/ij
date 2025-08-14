@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# IntelliJ Action CLI
+# Direct HTTP interface to IntelliJ actions
+# Usage: ij <action> [action2] [action3] ...
+# Example: ij About
+# Example: ij SaveAll ReformatCode
+
+INTELLIJ_API="http://localhost:63342/api/intellij-actions"
+
+# Check if at least one action is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: ij <action> [action2] [action3] ..."
+    echo "Examples:"
+    echo "  ij About"
+    echo "  ij ShowSettings"
+    echo "  ij SaveAll ReformatCode"
+    echo ""
+    echo "Common actions:"
+    echo "  About, ShowSettings, SaveAll, ReformatCode, OptimizeImports"
+    echo "  FindInPath, GotoDeclaration, Run, Debug, ToggleBookmark"
+    exit 1
+fi
+
+# Build the URL based on number of actions
+if [ $# -eq 1 ]; then
+    # Single action
+    URL="${INTELLIJ_API}/execute?action=$1"
+else
+    # Multiple actions
+    ACTIONS=$(IFS=,; echo "$*")
+    URL="${INTELLIJ_API}/execute?actions=${ACTIONS}"
+fi
+
+# Execute the request
+RESPONSE=$(curl -s "$URL" 2>&1)
+
+# Check if curl succeeded
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to connect to IntelliJ"
+    echo "Make sure IntelliJ IDEA is running with the Action Executor plugin"
+    exit 1
+fi
+
+# Check if response indicates success
+if echo "$RESPONSE" | grep -q '"success":true'; then
+    echo "✓ Action executed: $*"
+else
+    echo "✗ Action failed: $*"
+    echo "Response: $RESPONSE"
+    exit 1
+fi
