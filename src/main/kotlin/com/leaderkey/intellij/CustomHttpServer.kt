@@ -71,7 +71,7 @@ class CustomHttpServer(private val port: Int = 63343) {
     
     private class HealthHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
-            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.0.9","server":"custom","port":63343}"""
+            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.0","server":"custom","port":63343}"""
             CustomHttpServer.sendResponse(exchange, 200, response)
         }
     }

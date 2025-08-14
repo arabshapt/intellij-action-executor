@@ -2,6 +2,27 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.0] - 2025-08-14
+
+### Added
+- Comprehensive data context for all action executions
+- Support for context-dependent actions like CopyPaths, CopyAbsolutePath
+- Automatic detection of current editor, file, and selections
+- Project view selection context
+- Module and PSI element context
+- Navigation context for file-based actions
+
+### Fixed
+- "Action is disabled in current context" errors for file operations
+- Git actions now work with proper file context
+- Refactoring actions have required PSI elements
+- Copy/paste actions have file and selection context
+
+### Improved
+- Actions now receive same context as keyboard shortcuts
+- Better logging of available context elements
+- Fallback mechanisms for context retrieval
+
 ## [1.0.9] - 2025-08-14
 
 ### Fixed
