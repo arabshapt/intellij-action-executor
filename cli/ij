@@ -6,15 +6,29 @@
 # Example: ij About
 # Example: ij SaveAll ReformatCode
 
-INTELLIJ_API="http://localhost:63342/api/intellij-actions"
+# Custom server (no rate limiting)
+CUSTOM_API="http://localhost:63343/api/intellij-actions"
+# Built-in IntelliJ API (may have rate limiting)
+BUILTIN_API="http://localhost:63342/api/intellij-actions"
+
+# Check for flags
+FORCE_BUILTIN=false
+if [ "$1" = "--force-builtin" ]; then
+    FORCE_BUILTIN=true
+    shift
+fi
 
 # Check if at least one action is provided
 if [ $# -eq 0 ]; then
-    echo "Usage: ij <action> [action2] [action3] ..."
+    echo "Usage: ij [options] <action> [action2] [action3] ..."
+    echo "Options:"
+    echo "  --force-builtin  Use built-in API instead of custom server"
+    echo ""
     echo "Examples:"
     echo "  ij About"
     echo "  ij ShowSettings"
     echo "  ij SaveAll ReformatCode"
+    echo "  ij --force-builtin ReformatCode"
     echo ""
     echo "Common actions:"
     echo "  About, ShowSettings, SaveAll, ReformatCode, OptimizeImports"
@@ -22,31 +36,75 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-# Build the URL based on number of actions
+# Build the URL path based on number of actions
 if [ $# -eq 1 ]; then
     # Single action
-    URL="${INTELLIJ_API}/execute?action=$1"
+    URL_PATH="/execute?action=$1"
 else
     # Multiple actions
     ACTIONS=$(IFS=,; echo "$*")
-    URL="${INTELLIJ_API}/execute?actions=${ACTIONS}"
+    URL_PATH="/execute?actions=${ACTIONS}"
 fi
 
-# Execute the request
-RESPONSE=$(curl -s "$URL" 2>&1)
+# Function to execute request
+execute_request() {
+    local API_BASE=$1
+    local RESPONSE=$(curl -s -m 2 "${API_BASE}${URL_PATH}" 2>&1)
+    local EXIT_CODE=$?
+    
+    if [ $EXIT_CODE -eq 0 ]; then
+        # Check for rate limiting error
+        if echo "$RESPONSE" | grep -q "429 Too Many Requests"; then
+            echo "rate_limited"
+            return 1
+        fi
+        # Check if response indicates success
+        if echo "$RESPONSE" | grep -q '"success":true'; then
+            echo "$RESPONSE"
+            return 0
+        elif echo "$RESPONSE" | grep -q '"success":false'; then
+            echo "$RESPONSE"
+            return 2
+        fi
+    fi
+    echo "connection_failed"
+    return 1
+}
 
-# Check if curl succeeded
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to connect to IntelliJ"
-    echo "Make sure IntelliJ IDEA is running with the Action Executor plugin"
-    exit 1
+# Try custom server first (unless forced to use built-in)
+SUCCESS=false
+if [ "$FORCE_BUILTIN" = false ]; then
+    RESPONSE=$(execute_request "$CUSTOM_API")
+    RESULT=$?
+    
+    if [ $RESULT -eq 0 ]; then
+        echo "✓ Action executed: $*"
+        SUCCESS=true
+    elif [ $RESULT -eq 2 ]; then
+        echo "✗ Action failed: $*"
+        echo "Response: $RESPONSE"
+        exit 1
+    fi
 fi
 
-# Check if response indicates success
-if echo "$RESPONSE" | grep -q '"success":true'; then
-    echo "✓ Action executed: $*"
-else
-    echo "✗ Action failed: $*"
-    echo "Response: $RESPONSE"
-    exit 1
+# If custom server failed or force built-in, try built-in API
+if [ "$SUCCESS" = false ]; then
+    RESPONSE=$(execute_request "$BUILTIN_API")
+    RESULT=$?
+    
+    if [ $RESULT -eq 0 ]; then
+        echo "✓ Action executed: $*"
+    elif [ "$RESULT" -eq 2 ]; then
+        echo "✗ Action failed: $*"
+        echo "Response: $RESPONSE"
+        exit 1
+    elif echo "$RESPONSE" | grep -q "rate_limited"; then
+        echo "✗ Rate limited. The custom server may not be running."
+        echo "Try restarting IntelliJ or wait before retrying."
+        exit 1
+    else
+        echo "Error: Failed to connect to IntelliJ"
+        echo "Make sure IntelliJ IDEA is running with the Action Executor plugin"
+        exit 1
+    fi
 fi

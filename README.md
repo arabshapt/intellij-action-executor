@@ -1,6 +1,6 @@
 # IntelliJ Action Executor
 
-[![Version](https://img.shields.io/badge/version-1.0.7-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
+[![Version](https://img.shields.io/badge/version-1.0.8-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -14,6 +14,7 @@ Execute IntelliJ IDEA actions programmatically via REST API. Perfect for integra
 - 🎯 **Simple HTTP interface** - works with any HTTP client
 - 🛠️ **CLI tool included** for terminal usage
 - 🔌 **Perfect integration** with [LeaderKey](https://github.com/arabshapt/LeaderKey.app), Keyboard Maestro, Karabiner, Alfred, etc.
+- 🚫 **No rate limiting** - Custom server bypasses IntelliJ's 429 errors (v1.0.8+)
 
 ## 🎯 Quick Start
 
@@ -30,7 +31,7 @@ curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 
 ### Option 1: Install from JAR (Recommended)
 
-1. Download the latest `intellijPlugin-1.0.7.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
+1. Download the latest `intellijPlugin-1.0.8.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
 2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk...`
 3. Select the downloaded ZIP file
 4. Restart IntelliJ IDEA
@@ -253,7 +254,9 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 
 ## REST API
 
-The plugin provides REST endpoints at `http://localhost:63343/api/intellij-actions/`:
+The plugin provides REST endpoints at:
+- `http://localhost:63343/api/intellij-actions/` - Custom server (no rate limiting, v1.0.8+)
+- `http://localhost:63342/api/intellij-actions/` - Built-in IntelliJ API (may have rate limiting):
 
 ### Execute Action
 ```
@@ -296,6 +299,11 @@ curl http://localhost:63343/api/intellij-actions/list
 1. Ensure IntelliJ IDEA is running
 2. Check that the plugin is installed and enabled
 3. Verify REST API is accessible: `curl http://localhost:63343/api/intellij-actions/health`
+
+### Rate Limiting Errors (429 Too Many Requests)
+1. Upgrade to version 1.0.8+ which includes a custom server without rate limiting
+2. The CLI tool automatically uses the custom server on port 63343
+3. Direct API calls can use port 63343 instead of 63342
 
 ### URL Handler Not Working
 1. Check logs at `/tmp/intellij-action-handler.log`

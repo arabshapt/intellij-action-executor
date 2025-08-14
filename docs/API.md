@@ -331,10 +331,34 @@ ij_action "SaveAll"
 
 ## Rate Limiting
 
-There is no rate limiting on the API. However:
-- Actions are executed asynchronously to prevent blocking
-- Complex actions may take time to complete
-- Rapid successive calls may queue up
+### Built-in API (Port 63342)
+IntelliJ's built-in REST API may impose rate limiting (429 Too Many Requests) when too many requests are sent in quick succession.
+
+### Custom Server (Port 63343) - NO RATE LIMITING
+Starting from version 1.0.8, the plugin includes a custom HTTP server on port 63343 that has NO rate limiting. The CLI tool automatically tries this server first.
+
+**Benefits of Custom Server:**
+- No rate limiting (429 errors)
+- Faster response times for batch operations
+- Same API endpoints as built-in server
+- Automatic fallback to built-in API if custom server is unavailable
+
+**Using the Custom Server:**
+```bash
+# The CLI tool automatically uses it
+ij ReformatCode
+
+# Force using built-in API
+ij --force-builtin ReformatCode
+
+# Direct HTTP access to custom server
+curl "http://localhost:63343/api/intellij-actions/execute?action=ReformatCode"
+
+# Direct HTTP access to built-in API
+curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
+```
+
+**Note:** Actions are executed asynchronously to prevent blocking. Complex actions may take time to complete.
 
 ## Security
 

@@ -39,8 +39,12 @@
         <!-- Register our REST service -->
         <httpRequestHandler implementation="com.leaderkey.intellij.ActionRestService"/>
         
-        <!-- Register application service -->
+        <!-- Register application services -->
         <applicationService serviceImplementation="com.leaderkey.intellij.ActionExecutorService"/>
+        <applicationService serviceImplementation="com.leaderkey.intellij.CustomHttpServerService"/>
+        
+        <!-- Register startup activity for custom HTTP server -->
+        <postStartupActivity implementation="com.leaderkey.intellij.PluginStartup"/>
     </extensions>
 
     <applicationListeners>
