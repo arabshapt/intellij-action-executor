@@ -51,7 +51,7 @@ class CustomHttpServer(private val port: Int = 63343) {
                     }
                     params.containsKey("actions") -> {
                         val actions = params["actions"]!!.split(",")
-                        val delay = params["delay"]?.toLongOrNull() ?: 100
+                        val delay = params["delay"]?.toLongOrNull() ?: -1  // -1 means use smart delays
                         val results = actionService.executeActions(actions, delay)
                         CustomHttpServer.toJsonArray(results)
                     }
@@ -71,7 +71,7 @@ class CustomHttpServer(private val port: Int = 63343) {
     
     private class HealthHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
-            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.3","server":"custom","port":63343}"""
+            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.5","server":"custom","port":63343}"""
             CustomHttpServer.sendResponse(exchange, 200, response)
         }
     }

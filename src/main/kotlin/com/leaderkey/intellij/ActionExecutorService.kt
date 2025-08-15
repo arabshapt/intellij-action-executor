@@ -124,11 +124,6 @@ class ActionExecutorService {
                 } else {
                     ApplicationManager.getApplication().invokeAndWait(executeOnEdt)
                 }
-                
-                // For UI actions, give a small delay for UI to update
-                if (isUIAction(actionId)) {
-                    Thread.sleep(50)
-                }
             } else {
                 // For dialog actions or single executions, use async
                 ApplicationManager.getApplication().invokeLater(executeOnEdt)
@@ -148,28 +143,18 @@ class ActionExecutorService {
     }
     
     private fun isDialogAction(actionId: String): Boolean {
-        // Actions that typically open dialogs and should not block
-        val dialogActions = setOf(
-            "About", "ShowSettings", "ShowProjectStructureSettings",
-            "CheckinProject", "Git.CompareWithBranch", "Git.Branches",
-            "RefactoringMenu", "RenameElement", "Move", "ExtractMethod"
-        )
-        return dialogActions.contains(actionId)
+        // Delegate to ActionCategorizer for consistency
+        return ActionCategorizer.isDialogAction(actionId)
     }
     
     private fun isUIAction(actionId: String): Boolean {
-        // Actions that manipulate UI and need time to update
-        val uiActions = setOf(
-            "ActivateProjectToolWindow", "ActivateStructureToolWindow",
-            "ActivateFavoritesToolWindow", "ActivateVersionControlToolWindow",
-            "SplitVertically", "SplitHorizontally", "NextSplitter",
-            "MaximizeToolWindow", "HideAllWindows", "Tree-selectFirst"
-        )
-        return uiActions.contains(actionId)
+        // Delegate to ActionCategorizer for consistency
+        return ActionCategorizer.isUIAction(actionId)
     }
     
-    fun executeActions(actionIds: List<String>, delayMs: Long = 250): List<ExecutionResult> {
+    fun executeActions(actionIds: List<String>, delayMs: Long = -1): List<ExecutionResult> {
         val results = mutableListOf<ExecutionResult>()
+        val useSmartDelay = delayMs < 0  // -1 means use smart delays
         
         for ((index, actionId) in actionIds.withIndex()) {
             LOG.info("Executing action ${index + 1}/${actionIds.size}: $actionId")
@@ -183,15 +168,20 @@ class ActionExecutorService {
                 break
             }
             
-            // Add delay between actions (increased default to 250ms for better UI responsiveness)
-            if (delayMs > 0 && index < actionIds.size - 1) {
-                LOG.info("Waiting ${delayMs}ms before next action")
-                Thread.sleep(delayMs)
+            // Add delay between actions if not the last action
+            if (index < actionIds.size - 1) {
+                val nextAction = actionIds[index + 1]
+                val delay = if (useSmartDelay) {
+                    ActionCategorizer.getOptimalDelay(actionId, nextAction)
+                } else {
+                    delayMs
+                }
                 
-                // For UI actions, check if the next action needs more time
-                if (isUIAction(actionId)) {
-                    // Give extra time for UI actions to fully complete
-                    Thread.sleep(100)
+                if (delay > 0) {
+                    LOG.info("Delay ${delay}ms after '$actionId' before '$nextAction'")
+                    Thread.sleep(delay)
+                } else {
+                    LOG.debug("No delay needed between '$actionId' and '$nextAction'")
                 }
             }
         }

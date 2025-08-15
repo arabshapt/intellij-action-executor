@@ -2,6 +2,31 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.5] - 2025-08-15
+
+### Added
+- Smart delay optimization system with ActionCategorizer service
+- Intelligent action classification (instant, UI, async, dialog, etc.)
+- Dynamic delay calculation based on action types and sequences
+
+### Changed
+- Default behavior now uses smart delays instead of fixed 250ms
+- Delays range from 0ms (instant actions) to 500ms (async operations)
+- HTTP API now defaults to smart delays (use explicit delay parameter to override)
+
+### Improved
+- Action chains execute 70-90% faster for common operations
+- Zero delay between non-UI actions (SaveAll → Copy → Paste)
+- Minimal delays for UI updates (25-50ms)
+- Appropriate delays for async operations (builds, VCS operations)
+
+### Performance Improvements
+| Action Chain | Before | After | Improvement |
+|-------------|--------|-------|-------------|
+| SaveAll → ReformatCode → OptimizeImports | 500ms | 50ms | 90% faster |
+| Copy → Paste → SaveAll | 500ms | 0ms | Instant |
+| ActivateProjectToolWindow → Tree-selectFirst | 350ms | 250ms | 29% faster |
+
 ## [1.1.4] - 2025-08-15
 
 ### Fixed
