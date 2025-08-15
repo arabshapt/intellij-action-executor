@@ -1,6 +1,6 @@
 # IntelliJ Action Executor
 
-[![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
+[![Version](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -15,6 +15,14 @@ Execute IntelliJ IDEA actions programmatically via REST API. Perfect for integra
 - 🛠️ **CLI tool included** for terminal usage
 - 🔌 **Perfect integration** with [LeaderKey](https://github.com/arabshapt/LeaderKey.app), Keyboard Maestro, Karabiner, Alfred, etc.
 - 🚫 **No rate limiting** - Custom server bypasses IntelliJ's 429 errors (v1.0.8+)
+
+## 🆕 What's New in v1.1.4
+
+### Improved Context Handling
+- **Live DataContext** - Actions now receive context from the currently focused component instead of a static snapshot
+- **Fixed Tree Navigation** - Tree navigation actions (Tree-selectFirst, Tree-selectNext) now work correctly in action chains
+- **Better Context-Dependent Actions** - Git.CompareWithBranch and similar actions now operate on the correct selection
+- **Universal Solution** - All actions benefit from improved context resolution without special handling
 
 ## 🎯 Quick Start
 
@@ -31,7 +39,7 @@ curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 
 ### Option 1: Install from JAR (Recommended)
 
-1. Download the latest `intellijPlugin-1.1.3.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
+1. Download the latest `intellijPlugin-1.1.4.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
 2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk...`
 3. Select the downloaded ZIP file
 4. Restart IntelliJ IDEA
@@ -312,6 +320,7 @@ curl http://localhost:63343/api/intellij-actions/list
 
 ### Actions Not Executing
 1. Some actions require specific context (e.g., editor focus, file selection)
+   - **v1.1.4+ Fix**: Most context-dependent action issues have been resolved with live DataContext
 2. Check if the action is enabled in current context
 3. Use the `/check` endpoint to verify action availability
 
