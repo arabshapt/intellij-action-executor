@@ -17,28 +17,99 @@ DISCOVERY_MODE=""
 DETACH_MODE=false
 QUIET_MODE=false
 FORCE_MODE=false
+CONDITIONAL_MODE=""
+IF_CHECK=""
+THEN_ACTIONS=""
+ELSE_ACTIONS=""
 
 # Parse short flags first (e.g., -dqf)
 while [[ "$1" == -* ]] && [[ "$1" != --* ]]; do
-    if [[ "$1" == -* ]]; then
-        # Handle combined short flags like -dqf
-        FLAGS="${1#-}"
-        for (( i=0; i<${#FLAGS}; i++ )); do
-            FLAG="${FLAGS:$i:1}"
-            case "$FLAG" in
-                d) DETACH_MODE=true ;;
-                q) QUIET_MODE=true ;;
-                f) FORCE_MODE=true ;;
-                *) echo "Unknown flag: -$FLAG"; exit 1 ;;
-            esac
-        done
-        shift
-    fi
+    # Handle short conditional flags
+    case "$1" in
+        -ie)
+            IF_CHECK="editor"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        -if)
+            IF_CHECK="file"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        -ip)
+            IF_CHECK="project"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        -ia)
+            shift
+            IF_CHECK="$1:enabled"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        -iw)
+            shift
+            IF_CHECK="$1:window"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        -*)
+            # Handle combined short flags like -dqf
+            FLAGS="${1#-}"
+            for (( i=0; i<${#FLAGS}; i++ )); do
+                FLAG="${FLAGS:$i:1}"
+                case "$FLAG" in
+                    d) DETACH_MODE=true ;;
+                    q) QUIET_MODE=true ;;
+                    f) FORCE_MODE=true ;;
+                    *) echo "Unknown flag: -$FLAG"; exit 1 ;;
+                esac
+            done
+            shift
+            ;;
+    esac
 done
 
 # Parse long flags
 while [[ "$1" == --* ]]; do
     case "$1" in
+        --if-editor)
+            IF_CHECK="editor"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        --if-file)
+            IF_CHECK="file"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        --if-project)
+            IF_CHECK="project"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        --if-action|--if-enabled)
+            shift
+            IF_CHECK="$1:enabled"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        --if-window)
+            shift
+            IF_CHECK="$1:window"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
+        --then)
+            shift
+            THEN_ACTIONS="$1"
+            shift
+            ;;
+        --else)
+            shift
+            ELSE_ACTIONS="$1"
+            shift
+            ;;
         --detach)
             DETACH_MODE=true
             shift
@@ -139,14 +210,34 @@ if [ -n "$DISCOVERY_MODE" ]; then
     esac
 fi
 
+# Parse remaining arguments (actions with possible pipes)
+ACTIONS_STRING=""
+if [ $# -gt 0 ]; then
+    # Join all remaining arguments
+    ACTIONS_STRING="$*"
+fi
+
 # Check if at least one action is provided
-if [ $# -eq 0 ]; then
+if [ -z "$ACTIONS_STRING" ] && [ "$CONDITIONAL_MODE" != "if-then-else" ]; then
     echo "Usage: ij [options] <action> [action2] [action3] ..."
     echo ""
     echo "Fire-and-forget options:"
     echo "  -d, --detach     Fire and forget - send request and exit immediately"
     echo "  -q, --quiet      Suppress all output"
     echo "  -f, --force      Continue chain even if actions fail"
+    echo ""
+    echo "Conditional options:"
+    echo "  -ie, --if-editor          If editor is open"
+    echo "  -if, --if-file            If file is open"
+    echo "  -ip, --if-project         If project is open"
+    echo "  -ia <action>, --if-action <action>  If action is enabled"
+    echo "  -iw <window>, --if-window <window>  If tool window is active"
+    echo "  --then <actions>          Actions to run if condition is true"
+    echo "  --else <actions>          Actions to run if condition is false"
+    echo ""
+    echo "Operators:"
+    echo "  ,                Sequence (AND) - stops on failure"
+    echo "  |                Alternative (OR) - try until one succeeds"
     echo ""
     echo "Execution options:"
     echo "  --force-builtin  Use built-in API instead of custom server"
@@ -163,15 +254,15 @@ if [ $# -eq 0 ]; then
     echo ""
     echo "Examples:"
     echo "  ij About"
-    echo "  ij SaveAll ReformatCode"
-    echo "  ij -d SaveAll                  # Fire and forget"
-    echo "  ij -dq SaveAll ReformatCode     # Detached + quiet"
-    echo "  ij -f Action1 Action2           # Continue on failures"
-    echo "  ij -dqf Chain1 Chain2           # All flags combined"
+    echo "  ij SaveAll,ReformatCode                    # Sequential actions"
+    echo "  ij Git.Pull | Git.Fetch | ShowSettings     # OR fallback"
+    echo "  ij -ie --then SaveAll --else OpenFile      # Conditional"
+    echo "  ij -ia Git.Pull --then Git.Pull,Git.Push   # Check action enabled"
+    echo "  ij -d SaveAll                              # Fire and forget"
+    echo "  ij -dq SaveAll,ReformatCode                # Detached + quiet"
+    echo "  ij -f Action1,Action2                       # Continue on failures"
     echo "  ij --search format"
     echo "  ij --explain ReformatCode"
-    echo "  ij --history 20"
-    echo "  ij --stats ReformatCode"
     echo ""
     echo "Common actions:"
     echo "  About, ShowSettings, SaveAll, ReformatCode, OptimizeImports"
@@ -179,14 +270,32 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-# Build the URL path based on number of actions
-if [ $# -eq 1 ]; then
-    # Single action
-    URL_PATH="/execute?action=$1"
+# Build the URL path based on mode and actions
+if [ "$CONDITIONAL_MODE" = "if-then-else" ]; then
+    # Conditional execution
+    URL_PATH="/execute/conditional?if=$IF_CHECK"
+    [ -n "$THEN_ACTIONS" ] && URL_PATH="${URL_PATH}&then=$THEN_ACTIONS"
+    [ -n "$ELSE_ACTIONS" ] && URL_PATH="${URL_PATH}&else=$ELSE_ACTIONS"
+elif [[ "$ACTIONS_STRING" == *"|"* ]]; then
+    # OR chain execution - replace spaces around pipes with just pipes
+    CLEAN_ACTIONS=$(echo "$ACTIONS_STRING" | sed 's/ *| */|/g')
+    URL_PATH="/execute/conditional?actions=${CLEAN_ACTIONS}"
 else
-    # Multiple actions
-    ACTIONS=$(IFS=,; echo "$*")
-    URL_PATH="/execute?actions=${ACTIONS}"
+    # Regular execution
+    if [ -n "$ACTIONS_STRING" ]; then
+        # Check if it's a single action or multiple
+        if [[ "$ACTIONS_STRING" == *","* ]] || [[ "$ACTIONS_STRING" == *" "* ]]; then
+            # Multiple actions - replace spaces with commas
+            ACTIONS=$(echo "$ACTIONS_STRING" | tr ' ' ',')
+            URL_PATH="/execute?actions=${ACTIONS}"
+        else
+            # Single action
+            URL_PATH="/execute?action=$ACTIONS_STRING"
+        fi
+    else
+        echo "Error: No actions specified"
+        exit 1
+    fi
 fi
 
 # Add force parameter if force mode is enabled

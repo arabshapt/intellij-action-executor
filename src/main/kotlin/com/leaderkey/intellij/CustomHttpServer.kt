@@ -26,6 +26,8 @@ class CustomHttpServer(private val port: Int = 63343) {
                 createContext("/api/intellij-actions/history", HistoryHandler())
                 createContext("/api/intellij-actions/stats", StatsHandler())
                 createContext("/api/intellij-actions/suggestions", SuggestionsHandler())
+                createContext("/api/intellij-actions/state/query", StateHandler())
+                createContext("/api/intellij-actions/execute/conditional", ConditionalHandler())
                 setExecutor(executor)
                 start()
                 LOG.info("Custom HTTP server started on port $port")
@@ -329,6 +331,130 @@ class CustomHttpServer(private val port: Int = 63343) {
                 
                 val response = """{"suggestions":[$suggestionsJson],"patterns":[$patternsJson]}"""
                 CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
+    private class StateHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                val checksParam = params["checks"] ?: ""
+                
+                if (checksParam.isEmpty()) {
+                    val error = """{"success":false,"error":"No checks parameter provided"}"""
+                    CustomHttpServer.sendResponse(exchange, 400, error)
+                    return
+                }
+                
+                val checks = checksParam.split(",").map { it.trim() }
+                val stateService = StateQueryService.getInstance()
+                val results = stateService.queryStates(checks)
+                
+                val resultsJson = results.entries.joinToString(",") { (key, value) ->
+                    "\"$key\":$value"
+                }
+                
+                val response = """{$resultsJson}"""
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
+    private class ConditionalHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                
+                val conditionalExecutor = ConditionalExecutor.getInstance()
+                val actionService = ActionExecutorService.getInstance()
+                
+                // Check for OR chains (pipe-separated)
+                val actions = params["actions"]
+                if (actions != null && actions.contains("|")) {
+                    val condition = conditionalExecutor.parseOrChains(actions)
+                    val forceMode = params["force"]?.toBoolean() ?: false
+                    val result = conditionalExecutor.executeConditional(condition, forceMode)
+                    
+                    val executedJson = result.executedActions.joinToString(",") { "\"$it\"" }
+                    val response = """{
+                        "success":${result.success},
+                        "executedActions":[$executedJson],
+                        "message":${result.message?.let { "\"$it\"" } ?: "null"},
+                        "error":${result.error?.let { "\"$it\"" } ?: "null"}
+                    }"""
+                    CustomHttpServer.sendResponse(exchange, 200, response)
+                    return
+                }
+                
+                // Check for if-then-else
+                val ifCheck = params["if"]
+                val thenActions = params["then"]
+                val elseActions = params["else"]
+                
+                if (ifCheck != null && thenActions != null) {
+                    val condition = conditionalExecutor.parseConditionalFromArgs(
+                        check = ifCheck,
+                        thenActions = thenActions,
+                        elseActions = elseActions
+                    )
+                    
+                    if (condition != null) {
+                        val forceMode = params["force"]?.toBoolean() ?: false
+                        val result = conditionalExecutor.executeConditional(condition, forceMode)
+                        
+                        val executedJson = result.executedActions.joinToString(",") { "\"$it\"" }
+                        val response = """{
+                            "success":${result.success},
+                            "executedActions":[$executedJson],
+                            "message":${result.message?.let { "\"$it\"" } ?: "null"},
+                            "error":${result.error?.let { "\"$it\"" } ?: "null"},
+                            "conditionMet":${result.conditionMet}
+                        }"""
+                        CustomHttpServer.sendResponse(exchange, 200, response)
+                        return
+                    }
+                }
+                
+                // Fallback to regular execution
+                if (actions != null) {
+                    val actionList = actions.split(",")
+                    val forceMode = params["force"]?.toBoolean() ?: false
+                    
+                    // Execute with appropriate mode
+                    val results = if (forceMode) {
+                        // In force mode, continue even on failures
+                        actionList.map { actionService.executeAction(it) }
+                    } else {
+                        // Normal mode, stop on first failure
+                        val results = mutableListOf<ActionExecutorService.ExecutionResult>()
+                        for (action in actionList) {
+                            val result = actionService.executeAction(action)
+                            results.add(result)
+                            if (!result.success) break
+                        }
+                        results
+                    }
+                    
+                    val success = forceMode || results.all { it.success }
+                    val resultsJson = results.map { CustomHttpServer.toJson(it) }.joinToString(",")
+                    val response = """{
+                        "success":$success,
+                        "results":[$resultsJson]
+                    }"""
+                    CustomHttpServer.sendResponse(exchange, 200, response)
+                } else {
+                    val error = """{"success":false,"error":"No valid conditional or actions provided"}"""
+                    CustomHttpServer.sendResponse(exchange, 400, error)
+                }
             } catch (e: Exception) {
                 val error = """{"success":false,"error":"${e.message}"}"""
                 CustomHttpServer.sendResponse(exchange, 500, error)
