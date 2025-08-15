@@ -54,3 +54,6 @@ __pycache__/
 
 # Local configuration
 local.properties
+
+# Cloned repositories for reference
+ataman-intellij/
