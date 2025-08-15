@@ -7,11 +7,18 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.IdeFocusManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ide.DataManager
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.util.PsiTreeUtil
 
 @Service
 class StateQueryService {
@@ -80,12 +87,61 @@ class StateQueryService {
     }
     
     fun queryState(stateId: String): Boolean {
+        val project = getActiveProject()
+        
         return when {
             stateId == "editor" || stateId == "hasEditor" -> hasOpenEditor()
             stateId == "file" || stateId == "hasFile" -> hasOpenFile()
-            stateId == "project" || stateId == "hasProject" -> getActiveProject() != null
+            stateId == "project" || stateId == "hasProject" -> project != null
             stateId == "projectView" -> isProjectViewVisible()
             stateId == "terminal" -> isTerminalOpen()
+            
+            // Document state conditions
+            stateId == "hasModifications" || stateId == "hasUnsavedChanges" -> {
+                FileDocumentManager.getInstance().unsavedDocuments.isNotEmpty()
+            }
+            stateId == "hasErrors" -> {
+                project?.let { proj ->
+                    val psiFile = getCurrentPsiFile(proj)
+                    psiFile?.let { PsiTreeUtil.hasErrorElements(it) } ?: false
+                } ?: false
+            }
+            stateId == "hasSelection" -> {
+                project?.let { proj ->
+                    val editor = FileEditorManager.getInstance(proj).selectedTextEditor
+                    editor?.selectionModel?.hasSelection() ?: false
+                } ?: false
+            }
+            
+            // IDE state conditions
+            stateId == "isIndexing" || stateId == "indexing" -> {
+                project?.let { DumbService.getInstance(it).isDumb } ?: false
+            }
+            
+            // VCS conditions (basic check - Git plugin might not be available)
+            stateId == "gitRepository" || stateId == "hasGit" -> {
+                project?.let { proj ->
+                    try {
+                        // Check if .git directory exists in project root
+                        val projectDir = proj.basePath?.let { java.io.File(it, ".git") }
+                        projectDir?.exists() ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                } ?: false
+            }
+            
+            // Parameterized conditions
+            stateId.startsWith("fileType:") -> {
+                val type = stateId.removePrefix("fileType:")
+                project?.let { hasFileType(it, type) } ?: false
+            }
+            stateId.startsWith("hasExtension:") -> {
+                val ext = stateId.removePrefix("hasExtension:")
+                project?.let { hasFileExtension(it, ext) } ?: false
+            }
+            
+            // Existing conditions
             stateId.endsWith(":enabled") -> {
                 val actionId = stateId.removeSuffix(":enabled")
                 isActionEnabled(actionId)
@@ -154,5 +210,27 @@ class StateQueryService {
         return SimpleDataContext.builder()
             .add(CommonDataKeys.PROJECT, project)
             .build()
+    }
+    
+    private fun getCurrentPsiFile(project: Project): PsiFile? {
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor
+        val document = editor?.document ?: return null
+        return PsiDocumentManager.getInstance(project).getPsiFile(document)
+    }
+    
+    private fun getCurrentVirtualFile(project: Project): VirtualFile? {
+        return FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
+    }
+    
+    private fun hasFileType(project: Project, type: String): Boolean {
+        val file = getCurrentVirtualFile(project) ?: return false
+        val fileType = file.fileType
+        return fileType.name.equals(type, ignoreCase = true) || 
+               fileType.defaultExtension.equals(type, ignoreCase = true)
+    }
+    
+    private fun hasFileExtension(project: Project, extension: String): Boolean {
+        val file = getCurrentVirtualFile(project) ?: return false
+        return file.extension?.equals(extension, ignoreCase = true) == true
     }
 }
