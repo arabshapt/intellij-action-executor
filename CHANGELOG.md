@@ -2,6 +2,41 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.2.0] - 2025-08-15
+
+### Added
+- **Conditional Action Execution System**
+  - StateQueryService for querying IDE state (editor, file, project, tool windows)
+  - ConditionalExecutor for if-then-else logic and OR/AND chains
+  - Check if actions are enabled before execution
+  - State query HTTP endpoint: `/state/query`
+  - Conditional execution endpoint: `/execute/conditional`
+  
+- **CLI Conditional Syntax**
+  - Short flags: `-ie` (if-editor), `-if` (if-file), `-ip` (if-project)
+  - Action checks: `-ia <action>` (if-action-enabled)
+  - Window checks: `-iw <window>` (if-tool-window)
+  - Long flags: `--if-editor`, `--then`, `--else`
+  
+- **Chain Operators**
+  - Comma (`,`): Sequential AND - stops on failure
+  - Pipe (`|`): OR fallback - try alternatives
+  - Force flag (`-f`): Continue chains despite failures
+
+### CLI Examples
+```bash
+# Conditional execution
+ij -ie --then SaveAll,ReformatCode --else OpenFile
+ij -ia Git.Pull --then Git.Pull,Git.Push
+
+# OR fallback chains
+ij Git.Pull | Git.Fetch | ShowSettings
+ij SaveAll,ReformatCode | BackupSave
+
+# Complex combinations
+ij -dqf Git.Pull,Git.Push | SaveAll
+```
+
 ## [1.1.7] - 2025-08-15
 
 ### Added
