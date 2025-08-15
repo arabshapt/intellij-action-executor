@@ -14,10 +14,43 @@ BUILTIN_API="http://localhost:63342/api/intellij-actions"
 # Check for flags
 FORCE_BUILTIN=false
 DISCOVERY_MODE=""
+DETACH_MODE=false
+QUIET_MODE=false
+FORCE_MODE=false
 
-# Parse flags
+# Parse short flags first (e.g., -dqf)
+while [[ "$1" == -* ]] && [[ "$1" != --* ]]; do
+    if [[ "$1" == -* ]]; then
+        # Handle combined short flags like -dqf
+        FLAGS="${1#-}"
+        for (( i=0; i<${#FLAGS}; i++ )); do
+            FLAG="${FLAGS:$i:1}"
+            case "$FLAG" in
+                d) DETACH_MODE=true ;;
+                q) QUIET_MODE=true ;;
+                f) FORCE_MODE=true ;;
+                *) echo "Unknown flag: -$FLAG"; exit 1 ;;
+            esac
+        done
+        shift
+    fi
+done
+
+# Parse long flags
 while [[ "$1" == --* ]]; do
     case "$1" in
+        --detach)
+            DETACH_MODE=true
+            shift
+            ;;
+        --quiet)
+            QUIET_MODE=true
+            shift
+            ;;
+        --force)
+            FORCE_MODE=true
+            shift
+            ;;
         --force-builtin)
             FORCE_BUILTIN=true
             shift
@@ -110,6 +143,11 @@ fi
 if [ $# -eq 0 ]; then
     echo "Usage: ij [options] <action> [action2] [action3] ..."
     echo ""
+    echo "Fire-and-forget options:"
+    echo "  -d, --detach     Fire and forget - send request and exit immediately"
+    echo "  -q, --quiet      Suppress all output"
+    echo "  -f, --force      Continue chain even if actions fail"
+    echo ""
     echo "Execution options:"
     echo "  --force-builtin  Use built-in API instead of custom server"
     echo ""
@@ -126,11 +164,14 @@ if [ $# -eq 0 ]; then
     echo "Examples:"
     echo "  ij About"
     echo "  ij SaveAll ReformatCode"
+    echo "  ij -d SaveAll                  # Fire and forget"
+    echo "  ij -dq SaveAll ReformatCode     # Detached + quiet"
+    echo "  ij -f Action1 Action2           # Continue on failures"
+    echo "  ij -dqf Chain1 Chain2           # All flags combined"
     echo "  ij --search format"
     echo "  ij --explain ReformatCode"
     echo "  ij --history 20"
     echo "  ij --stats ReformatCode"
-    echo "  ij --suggestions"
     echo ""
     echo "Common actions:"
     echo "  About, ShowSettings, SaveAll, ReformatCode, OptimizeImports"
@@ -146,6 +187,24 @@ else
     # Multiple actions
     ACTIONS=$(IFS=,; echo "$*")
     URL_PATH="/execute?actions=${ACTIONS}"
+fi
+
+# Add force parameter if force mode is enabled
+if [ "$FORCE_MODE" = true ]; then
+    URL_PATH="${URL_PATH}&force=true"
+fi
+
+# Handle detach mode - fire and forget
+if [ "$DETACH_MODE" = true ]; then
+    if [ "$QUIET_MODE" = true ]; then
+        # Detach + quiet: complete silence
+        curl -s "${CUSTOM_API}${URL_PATH}" >/dev/null 2>&1 &
+    else
+        # Detach only: minimal output
+        echo "→ Detached: $*"
+        curl -s "${CUSTOM_API}${URL_PATH}" >/dev/null 2>&1 &
+    fi
+    exit 0
 fi
 
 # Function to execute request
@@ -180,12 +239,19 @@ if [ "$FORCE_BUILTIN" = false ]; then
     RESULT=$?
     
     if [ $RESULT -eq 0 ]; then
-        echo "✓ Action executed: $*"
+        if [ "$QUIET_MODE" = false ]; then
+            echo "✓ Action executed: $*"
+        fi
         SUCCESS=true
     elif [ $RESULT -eq 2 ]; then
-        echo "✗ Action failed: $*"
-        echo "Response: $RESPONSE"
-        exit 1
+        if [ "$QUIET_MODE" = false ]; then
+            echo "✗ Action failed: $*"
+            echo "Response: $RESPONSE"
+        fi
+        # Only exit on failure if not in force mode
+        if [ "$FORCE_MODE" = false ]; then
+            exit 1
+        fi
     fi
 fi
 
@@ -195,18 +261,32 @@ if [ "$SUCCESS" = false ]; then
     RESULT=$?
     
     if [ $RESULT -eq 0 ]; then
-        echo "✓ Action executed: $*"
+        if [ "$QUIET_MODE" = false ]; then
+            echo "✓ Action executed: $*"
+        fi
     elif [ "$RESULT" -eq 2 ]; then
-        echo "✗ Action failed: $*"
-        echo "Response: $RESPONSE"
-        exit 1
+        if [ "$QUIET_MODE" = false ]; then
+            echo "✗ Action failed: $*"
+            echo "Response: $RESPONSE"
+        fi
+        if [ "$FORCE_MODE" = false ]; then
+            exit 1
+        fi
     elif echo "$RESPONSE" | grep -q "rate_limited"; then
-        echo "✗ Rate limited. The custom server may not be running."
-        echo "Try restarting IntelliJ or wait before retrying."
-        exit 1
+        if [ "$QUIET_MODE" = false ]; then
+            echo "✗ Rate limited. The custom server may not be running."
+            echo "Try restarting IntelliJ or wait before retrying."
+        fi
+        if [ "$FORCE_MODE" = false ]; then
+            exit 1
+        fi
     else
-        echo "Error: Failed to connect to IntelliJ"
-        echo "Make sure IntelliJ IDEA is running with the Action Executor plugin"
-        exit 1
+        if [ "$QUIET_MODE" = false ]; then
+            echo "Error: Failed to connect to IntelliJ"
+            echo "Make sure IntelliJ IDEA is running with the Action Executor plugin"
+        fi
+        if [ "$FORCE_MODE" = false ]; then
+            exit 1
+        fi
     fi
 fi
