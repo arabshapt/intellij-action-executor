@@ -4,7 +4,8 @@
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Execute IntelliJ IDEA actions programmatically via REST API. Perfect for integrating with macro tools, keyboard launchers, and automation workflows
+Execute IntelliJ IDEA actions programmatically via REST API. Perfect for integrating with macro tools, keyboard
+launchers, and automation workflows
 
 ## ✨ Features
 
@@ -13,14 +14,17 @@ Execute IntelliJ IDEA actions programmatically via REST API. Perfect for integra
 - 🔗 **Chain multiple actions** in a single request
 - 🎯 **Simple HTTP interface** - works with any HTTP client
 - 🛠️ **CLI tool included** for terminal usage
-- 🔌 **Perfect integration** with [LeaderKey](https://github.com/arabshapt/LeaderKey.app), Keyboard Maestro, Karabiner, Alfred, etc.
+- 🔌 **Perfect integration** with [LeaderKey](https://github.com/arabshapt/LeaderKey.app), Keyboard Maestro, Karabiner,
+  Alfred, etc.
 - 🚫 **No rate limiting** - Custom server bypasses IntelliJ's 429 errors (v1.0.8+)
 
 ## 🆕 What's New in v1.1.4
 
 ### Improved Context Handling
+
 - **Live DataContext** - Actions now receive context from the currently focused component instead of a static snapshot
-- **Fixed Tree Navigation** - Tree navigation actions (Tree-selectFirst, Tree-selectNext) now work correctly in action chains
+- **Fixed Tree Navigation** - Tree navigation actions (Tree-selectFirst, Tree-selectNext) now work correctly in action
+  chains
 - **Better Context-Dependent Actions** - Git.CompareWithBranch and similar actions now operate on the correct selection
 - **Universal Solution** - All actions benefit from improved context resolution without special handling
 
@@ -39,7 +43,8 @@ curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 
 ### Option 1: Install from JAR (Recommended)
 
-1. Download the latest `intellijPlugin-1.1.4.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
+1. Download the latest `intellijPlugin-1.1.4.zip`
+   from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
 2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk...`
 3. Select the downloaded ZIP file
 4. Restart IntelliJ IDEA
@@ -67,16 +72,19 @@ chmod +x ~/ij
 ### REST API
 
 #### Execute Single Action
+
 ```bash
 curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 ```
 
 #### Execute Multiple Actions
+
 ```bash
 curl "http://localhost:63342/api/intellij-actions/execute?actions=SaveAll,ReformatCode,OptimizeImports"
 ```
 
 #### With Delay Between Actions
+
 ```bash
 curl "http://localhost:63342/api/intellij-actions/execute?actions=SaveAll,ReformatCode&delay=500"
 ```
@@ -187,6 +195,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 ## Common Action IDs
 
 ### File Operations
+
 - `SaveAll` - Save all files
 - `SaveDocument` - Save current file
 - `ReloadFromDisk` - Reload file from disk
@@ -196,6 +205,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `CloseAllEditors` - Close all tabs
 
 ### Code Editing
+
 - `ReformatCode` - Reformat current file
 - `OptimizeImports` - Optimize imports
 - `CodeCompletion` - Show code completion
@@ -205,6 +215,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `CollapseAllRegions` - Collapse all code regions
 
 ### Navigation
+
 - `GotoDeclaration` - Go to declaration
 - `GotoImplementation` - Go to implementation
 - `GotoTypeDeclaration` - Go to type declaration
@@ -217,6 +228,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `ShowUsages` - Show usages popup
 
 ### Refactoring
+
 - `RefactoringMenu` - Show refactoring menu
 - `RenameElement` - Rename element
 - `Move` - Move element
@@ -227,6 +239,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `Inline` - Inline variable/method
 
 ### Version Control
+
 - `CheckinProject` - Commit changes
 - `Vcs.Push` - Push to remote
 - `Vcs.UpdateProject` - Pull from remote
@@ -236,6 +249,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `Git.Stash` - Stash changes
 
 ### Run/Debug
+
 - `Run` - Run current configuration
 - `Debug` - Debug current configuration
 - `RunClass` - Run current class
@@ -245,6 +259,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `ViewBreakpoints` - View all breakpoints
 
 ### Window Management
+
 - `SplitVertically` - Split window vertically
 - `SplitHorizontally` - Split window horizontally
 - `NextSplitter` - Next split window
@@ -253,6 +268,7 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 - `HideAllWindows` - Hide all tool windows
 
 ### Project
+
 - `ShowSettings` - Open settings
 - `ShowProjectStructureSettings` - Project structure
 - `ProjectViewPopupMenu` - Project view menu
@@ -263,26 +279,31 @@ open "intellij-action://execute?actions=SaveAll,ReformatCode"
 ## REST API
 
 The plugin provides REST endpoints at:
+
 - `http://localhost:63343/api/intellij-actions/` - Custom server (no rate limiting, v1.0.8+)
 - `http://localhost:63342/api/intellij-actions/` - Built-in IntelliJ API (may have rate limiting):
 
 ### Execute Action
+
 ```
 GET /api/intellij-actions/execute?action=ActionId
 GET /api/intellij-actions/execute?actions=Action1,Action2&delay=100
 ```
 
 ### Check Action Availability
+
 ```
 GET /api/intellij-actions/check?action=ActionId
 ```
 
 ### List Available Actions
+
 ```
 GET /api/intellij-actions/list
 ```
 
 ### Health Check
+
 ```
 GET /api/intellij-actions/health
 ```
@@ -297,6 +318,7 @@ To find the ID of any action in IntelliJ:
 4. The action ID will be shown in the status bar at the bottom
 
 Alternatively, use the REST API to list all available actions:
+
 ```bash
 curl http://localhost:63343/api/intellij-actions/list
 ```
@@ -304,39 +326,47 @@ curl http://localhost:63343/api/intellij-actions/list
 ## Troubleshooting
 
 ### Plugin Not Working
+
 1. Ensure IntelliJ IDEA is running
 2. Check that the plugin is installed and enabled
 3. Verify REST API is accessible: `curl http://localhost:63343/api/intellij-actions/health`
 
 ### Rate Limiting Errors (429 Too Many Requests)
+
 1. Upgrade to version 1.0.8+ which includes a custom server without rate limiting
 2. The CLI tool automatically uses the custom server on port 63343
 3. Direct API calls can use port 63343 instead of 63342
 
 ### URL Handler Not Working
+
 1. Check logs at `/tmp/intellij-action-handler.log`
-2. Verify URL scheme registration: `/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -dump | grep intellij-action`
+2. Verify URL scheme registration:
+   `/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -dump | grep intellij-action`
 3. Try reinstalling: `cd url-handler && ./install.sh`
 
 ### Actions Not Executing
+
 1. Some actions require specific context (e.g., editor focus, file selection)
-   - **v1.1.4+ Fix**: Most context-dependent action issues have been resolved with live DataContext
+    - **v1.1.4+ Fix**: Most context-dependent action issues have been resolved with live DataContext
 2. Check if the action is enabled in current context
 3. Use the `/check` endpoint to verify action availability
 
 ## Development
 
 ### Building the Plugin
+
 ```bash
 ./gradlew clean buildPlugin
 ```
 
 ### Running IDE with Plugin
+
 ```bash
 ./gradlew runIde
 ```
 
 ### Running Tests
+
 ```bash
 ./gradlew test
 ```
@@ -358,4 +388,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Credits
 
-Created for integration with [LeaderKey.app](https://github.com/mikker/LeaderKey.app) - The faster than your launcher launcher.
+Created for integration with [LeaderKey.app](https://github.com/mikker/LeaderKey.app) - The faster than your launcher
+launcher.
