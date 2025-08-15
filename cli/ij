@@ -13,22 +13,82 @@ BUILTIN_API="http://localhost:63342/api/intellij-actions"
 
 # Check for flags
 FORCE_BUILTIN=false
-if [ "$1" = "--force-builtin" ]; then
-    FORCE_BUILTIN=true
-    shift
+DISCOVERY_MODE=""
+
+# Parse flags
+while [[ "$1" == --* ]]; do
+    case "$1" in
+        --force-builtin)
+            FORCE_BUILTIN=true
+            shift
+            ;;
+        --search)
+            DISCOVERY_MODE="search"
+            shift
+            break
+            ;;
+        --explain)
+            DISCOVERY_MODE="explain"
+            shift
+            break
+            ;;
+        --list)
+            DISCOVERY_MODE="list"
+            shift
+            break
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Handle discovery modes
+if [ -n "$DISCOVERY_MODE" ]; then
+    case "$DISCOVERY_MODE" in
+        search)
+            if [ $# -eq 0 ]; then
+                echo "Usage: ij --search <query>"
+                exit 1
+            fi
+            curl -s "${CUSTOM_API}/search?q=$1" | jq '.'
+            exit 0
+            ;;
+        explain)
+            if [ $# -eq 0 ]; then
+                echo "Usage: ij --explain <action>"
+                exit 1
+            fi
+            curl -s "${CUSTOM_API}/explain?action=$1" | jq '.'
+            exit 0
+            ;;
+        list)
+            echo "Fetching all available actions..."
+            curl -s "${CUSTOM_API}/list" | jq '.count'
+            echo "Use 'ij --search <query>' to search for specific actions"
+            exit 0
+            ;;
+    esac
 fi
 
 # Check if at least one action is provided
 if [ $# -eq 0 ]; then
     echo "Usage: ij [options] <action> [action2] [action3] ..."
-    echo "Options:"
+    echo ""
+    echo "Execution options:"
     echo "  --force-builtin  Use built-in API instead of custom server"
+    echo ""
+    echo "Discovery options:"
+    echo "  --search <query>  Search for actions matching query"
+    echo "  --explain <action>  Show action requirements and description"
+    echo "  --list  Show count of all available actions"
     echo ""
     echo "Examples:"
     echo "  ij About"
-    echo "  ij ShowSettings"
     echo "  ij SaveAll ReformatCode"
-    echo "  ij --force-builtin ReformatCode"
+    echo "  ij --search format"
+    echo "  ij --explain ReformatCode"
     echo ""
     echo "Common actions:"
     echo "  About, ShowSettings, SaveAll, ReformatCode, OptimizeImports"

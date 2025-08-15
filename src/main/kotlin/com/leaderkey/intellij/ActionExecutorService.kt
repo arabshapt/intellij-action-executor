@@ -34,11 +34,26 @@ class ActionExecutorService {
             ApplicationManager.getApplication().getService(ActionExecutorService::class.java)
     }
 
+    enum class ErrorType {
+        ACTION_NOT_FOUND,
+        MISSING_CONTEXT,
+        ACTION_DISABLED,
+        PROJECT_REQUIRED,
+        EDITOR_REQUIRED,
+        FILE_REQUIRED,
+        GIT_REPOSITORY_REQUIRED,
+        BUILD_SYSTEM_REQUIRED,
+        UNKNOWN_ERROR
+    }
+    
     data class ExecutionResult(
         val success: Boolean,
         val actionId: String,
         val message: String? = null,
-        val error: String? = null
+        val error: String? = null,
+        val errorType: ErrorType? = null,
+        val suggestion: String? = null,
+        val requiredContext: List<String>? = null
     )
 
     fun executeAction(actionId: String): ExecutionResult {
@@ -60,7 +75,13 @@ class ActionExecutorService {
             
             if (action == null) {
                 LOG.warn("Action not found: $actionId")
-                return ExecutionResult(false, actionId, error = "Action not found: $actionId")
+                return ExecutionResult(
+                    success = false,
+                    actionId = actionId,
+                    error = "Action not found: $actionId",
+                    errorType = ErrorType.ACTION_NOT_FOUND,
+                    suggestion = "Check available actions with 'ij --list' or search with 'ij --search ${actionId.take(5)}'"
+                )
             }
             
             LOG.info("Action found: ${action.javaClass.name}")
@@ -97,11 +118,27 @@ class ActionExecutorService {
                     
                     if (!event.presentation.isEnabled) {
                         LOG.warn("Action is disabled: $actionId")
-                        LOG.warn("Data context details - Has editor: ${dataContext.getData(CommonDataKeys.EDITOR) != null}, " +
-                                "Has file: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null}, " +
-                                "Has file array: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.size ?: 0}, " +
-                                "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}")
-                        executionResult = ExecutionResult(false, actionId, error = "Action is disabled in current context")
+                        val hasEditor = dataContext.getData(CommonDataKeys.EDITOR) != null
+                        val hasFile = dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null
+                        val hasFileArray = dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.isNotEmpty() == true
+                        val hasPsi = dataContext.getData(CommonDataKeys.PSI_FILE) != null
+                        val hasProject = dataContext.getData(CommonDataKeys.PROJECT) != null
+                        
+                        LOG.warn("Data context details - Has editor: $hasEditor, Has file: $hasFile, " +
+                                "Has file array: $hasFileArray, Has PSI: $hasPsi, Has project: $hasProject")
+                        
+                        val (errorType, suggestion, requiredContext) = analyzeDisabledAction(
+                            actionId, hasProject, hasEditor, hasFile, hasFileArray
+                        )
+                        
+                        executionResult = ExecutionResult(
+                            success = false,
+                            actionId = actionId,
+                            error = "Action is disabled in current context",
+                            errorType = errorType,
+                            suggestion = suggestion,
+                            requiredContext = requiredContext
+                        )
                         return@Runnable
                     }
                     
@@ -132,13 +169,31 @@ class ActionExecutorService {
             }
             
             if (executionException != null) {
-                return ExecutionResult(false, actionId, error = executionException?.message)
+                return ExecutionResult(
+                    success = false,
+                    actionId = actionId,
+                    error = executionException?.message,
+                    errorType = ErrorType.UNKNOWN_ERROR,
+                    suggestion = "Check IntelliJ logs for details. Try restarting IntelliJ if the problem persists."
+                )
             }
             
-            return executionResult ?: ExecutionResult(false, actionId, error = "Unknown error")
+            return executionResult ?: ExecutionResult(
+                success = false,
+                actionId = actionId,
+                error = "Unknown error",
+                errorType = ErrorType.UNKNOWN_ERROR,
+                suggestion = "The action failed for an unknown reason. Check IntelliJ logs for details."
+            )
         } catch (e: Exception) {
             LOG.error("Failed to execute action: $actionId", e)
-            ExecutionResult(false, actionId, error = e.message)
+            ExecutionResult(
+                success = false,
+                actionId = actionId,
+                error = e.message,
+                errorType = ErrorType.UNKNOWN_ERROR,
+                suggestion = "An unexpected error occurred. Check IntelliJ logs for details."
+            )
         }
     }
     
@@ -436,6 +491,95 @@ class ActionExecutorService {
             LOG.info("Using current file as selected: ${it.name}")
             arrayOf(it) 
         }
+    }
+    
+    private fun analyzeDisabledAction(
+        actionId: String,
+        hasProject: Boolean,
+        hasEditor: Boolean,
+        hasFile: Boolean,
+        hasFileArray: Boolean
+    ): Triple<ErrorType, String, List<String>> {
+        val requiredContext = mutableListOf<String>()
+        
+        // Check project requirement
+        if (!hasProject) {
+            requiredContext.add("Project")
+            return Triple(
+                ErrorType.PROJECT_REQUIRED,
+                "No project is open. Open a project in IntelliJ first.",
+                requiredContext
+            )
+        }
+        
+        // Analyze based on action patterns
+        when {
+            // Editor-related actions
+            actionId.contains("Reformat") || actionId.contains("Optimize") || 
+            actionId.contains("Comment") || actionId.startsWith("Editor") -> {
+                if (!hasEditor) {
+                    requiredContext.add("Editor")
+                    return Triple(
+                        ErrorType.EDITOR_REQUIRED,
+                        "Open a file in the editor first, then try again.",
+                        requiredContext
+                    )
+                }
+            }
+            
+            // File operations
+            actionId.contains("Copy") || actionId.contains("Move") || 
+            actionId.contains("Delete") || actionId.contains("Rename") -> {
+                if (!hasFile && !hasFileArray) {
+                    requiredContext.add("File selection")
+                    return Triple(
+                        ErrorType.FILE_REQUIRED,
+                        "Select a file in the Project view or open one in the editor.",
+                        requiredContext
+                    )
+                }
+            }
+            
+            // VCS operations
+            actionId.startsWith("Git.") || actionId.startsWith("Vcs.") || 
+            actionId.contains("Commit") || actionId.contains("Push") || actionId.contains("Pull") -> {
+                requiredContext.add("Git repository")
+                return Triple(
+                    ErrorType.GIT_REPOSITORY_REQUIRED,
+                    "Action requires a Git repository. Ensure your project is under version control.",
+                    requiredContext
+                )
+            }
+            
+            // Build operations
+            actionId.contains("Build") || actionId.contains("Compile") || 
+            actionId.contains("Make") || actionId.contains("Run") || actionId.contains("Debug") -> {
+                requiredContext.add("Build configuration")
+                return Triple(
+                    ErrorType.BUILD_SYSTEM_REQUIRED,
+                    "Configure your build system (Maven/Gradle) or run configuration first.",
+                    requiredContext
+                )
+            }
+            
+            // Tree/List operations
+            actionId.startsWith("Tree-") || actionId.startsWith("List-") -> {
+                requiredContext.add("Tree/List focus")
+                return Triple(
+                    ErrorType.MISSING_CONTEXT,
+                    "Focus on a tree or list component first (e.g., Project view, Structure view).",
+                    requiredContext
+                )
+            }
+        }
+        
+        // Default case - generic context issue
+        requiredContext.add("Appropriate context")
+        return Triple(
+            ErrorType.MISSING_CONTEXT,
+            "Action '$actionId' requires specific context. Try: 1) Open a file, 2) Select items in Project view, 3) Focus on the appropriate tool window.",
+            requiredContext
+        )
     }
     
     private fun getSelectedItem(project: Project?): Any? {

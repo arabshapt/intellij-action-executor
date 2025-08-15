@@ -2,6 +2,34 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.6] - 2025-08-15
+
+### Added
+- Enhanced error context with actionable suggestions for failed actions
+- Error type classification (EDITOR_REQUIRED, FILE_REQUIRED, GIT_REQUIRED, etc.)
+- Action discovery CLI with search and explain functionality
+- New HTTP endpoints: `/search` and `/explain` for action discovery
+- CLI flags: `--search`, `--explain`, `--list` for exploring available actions
+- Pre-execution validation to detect missing requirements
+- Detailed error messages explaining why actions are disabled
+
+### Changed
+- ExecutionResult now includes errorType, suggestion, and requiredContext fields
+- Error messages provide specific guidance on how to fix issues
+- HTTP responses include enhanced error context
+
+### Improved
+- Better user experience with clear, actionable error messages
+- Self-documenting plugin - users can discover actions without external documentation
+- Easier debugging with detailed context about action requirements
+
+### CLI Examples
+```bash
+ij --search format        # Find format-related actions
+ij --explain ReformatCode # Show action requirements and description
+ij --list                 # Show count of available actions
+```
+
 ## [1.1.5] - 2025-08-15
 
 ### Added

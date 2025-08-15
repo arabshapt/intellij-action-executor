@@ -21,6 +21,8 @@ class CustomHttpServer(private val port: Int = 63343) {
                 createContext("/api/intellij-actions/health", HealthHandler())
                 createContext("/api/intellij-actions/list", ListHandler())
                 createContext("/api/intellij-actions/check", CheckHandler())
+                createContext("/api/intellij-actions/search", SearchHandler())
+                createContext("/api/intellij-actions/explain", ExplainHandler())
                 setExecutor(executor)
                 start()
                 LOG.info("Custom HTTP server started on port $port")
@@ -71,7 +73,7 @@ class CustomHttpServer(private val port: Int = 63343) {
     
     private class HealthHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
-            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.5","server":"custom","port":63343}"""
+            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.6","server":"custom","port":63343}"""
             CustomHttpServer.sendResponse(exchange, 200, response)
         }
     }
@@ -115,6 +117,142 @@ class CustomHttpServer(private val port: Int = 63343) {
         }
     }
     
+    private class SearchHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                val searchQuery = params["q"] ?: ""
+                
+                val actionService = ActionExecutorService.getInstance()
+                val allActions = actionService.getAllActionIds()
+                
+                // Filter actions based on search query
+                val matchingActions = if (searchQuery.isNotEmpty()) {
+                    allActions.filter { actionId ->
+                        actionId.contains(searchQuery, ignoreCase = true) ||
+                        actionId.split(".", "_", "-").any { 
+                            it.startsWith(searchQuery, ignoreCase = true)
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+                
+                val actionsJson = matchingActions.take(100).joinToString(",") { "\"$it\"" }
+                val response = """{"query":"$searchQuery","actions":[$actionsJson],"count":${matchingActions.size},"truncated":${matchingActions.size > 100}}"""
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
+    private class ExplainHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                val actionId = params["action"] ?: ""
+                
+                if (actionId.isEmpty()) {
+                    val error = """{"success":false,"error":"No action parameter provided"}"""
+                    CustomHttpServer.sendResponse(exchange, 400, error)
+                    return
+                }
+                
+                val actionService = ActionExecutorService.getInstance()
+                val exists = actionService.isActionAvailable(actionId)
+                
+                if (!exists) {
+                    val error = """{"success":false,"error":"Action not found: $actionId"}"""
+                    CustomHttpServer.sendResponse(exchange, 404, error)
+                    return
+                }
+                
+                // Analyze action requirements
+                val requirements = analyzeActionRequirements(actionId)
+                val category = getActionCategory(actionId)
+                val delay = ActionCategorizer.getOptimalDelay(actionId, null)
+                
+                val response = """{
+                    "actionId":"$actionId",
+                    "exists":true,
+                    "category":"$category",
+                    "smartDelay":$delay,
+                    "requirements":${requirements.toJson()},
+                    "description":"${getActionDescription(actionId)}"
+                }"""
+                
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+        
+        private fun analyzeActionRequirements(actionId: String): ActionRequirements {
+            return ActionRequirements(
+                needsEditor = actionId.contains("Reformat") || actionId.contains("Optimize") || 
+                             actionId.contains("Comment") || actionId.startsWith("Editor"),
+                needsFile = actionId.contains("Copy") || actionId.contains("Move") || 
+                           actionId.contains("Delete") || actionId.contains("Rename"),
+                needsProject = !actionId.equals("About") && !actionId.equals("ShowSettings"),
+                needsGit = actionId.startsWith("Git.") || actionId.startsWith("Vcs."),
+                needsBuildSystem = actionId.contains("Build") || actionId.contains("Compile") || 
+                                  actionId.contains("Make") || actionId.contains("Run")
+            )
+        }
+        
+        private fun getActionCategory(actionId: String): String {
+            return when {
+                ActionCategorizer.isInstantAction(actionId) -> "instant"
+                ActionCategorizer.isQuickUIAction(actionId) -> "quick-ui"
+                ActionCategorizer.isToolWindowAction(actionId) -> "tool-window"
+                ActionCategorizer.isTreeOrListAction(actionId) -> "tree-list"
+                ActionCategorizer.triggersAsyncOperation(actionId) -> "async"
+                ActionCategorizer.isDialogAction(actionId) -> "dialog"
+                else -> "unknown"
+            }
+        }
+        
+        private fun getActionDescription(actionId: String): String {
+            // Basic descriptions based on patterns
+            return when {
+                actionId == "SaveAll" -> "Save all modified files"
+                actionId == "ReformatCode" -> "Reformat current file according to code style"
+                actionId == "OptimizeImports" -> "Remove unused imports and organize them"
+                actionId.startsWith("Git.") -> "Git version control operation"
+                actionId.startsWith("Run") -> "Run or execute operation"
+                actionId.startsWith("Debug") -> "Debug operation"
+                actionId.contains("Copy") -> "Copy operation"
+                actionId.contains("Paste") -> "Paste operation"
+                actionId.startsWith("Activate") && actionId.endsWith("ToolWindow") -> "Activate tool window"
+                actionId.startsWith("Tree-") -> "Tree navigation action"
+                else -> "IntelliJ IDEA action"
+            }
+        }
+        
+        data class ActionRequirements(
+            val needsEditor: Boolean,
+            val needsFile: Boolean,
+            val needsProject: Boolean,
+            val needsGit: Boolean,
+            val needsBuildSystem: Boolean
+        ) {
+            fun toJson(): String {
+                return """{
+                    "needsEditor":$needsEditor,
+                    "needsFile":$needsFile,
+                    "needsProject":$needsProject,
+                    "needsGit":$needsGit,
+                    "needsBuildSystem":$needsBuildSystem
+                }"""
+            }
+        }
+    }
+    
     companion object {
         private val LOG = Logger.getInstance(CustomHttpServer::class.java)
         
@@ -142,7 +280,12 @@ class CustomHttpServer(private val port: Int = 63343) {
         private fun toJson(result: ActionExecutorService.ExecutionResult): String {
             val error = if (result.error != null) "\"${result.error}\"" else "null"
             val message = if (result.message != null) "\"${result.message}\"" else "null"
-            return """{"success":${result.success},"action":"${result.actionId}","message":$message,"error":$error}"""
+            val errorType = if (result.errorType != null) "\"${result.errorType}\"" else "null"
+            val suggestion = if (result.suggestion != null) "\"${result.suggestion}\"" else "null"
+            val requiredContext = if (result.requiredContext != null) {
+                "[${result.requiredContext.joinToString(",") { "\"$it\"" }}]"
+            } else "null"
+            return """{"success":${result.success},"action":"${result.actionId}","message":$message,"error":$error,"errorType":$errorType,"suggestion":$suggestion,"requiredContext":$requiredContext}"""
         }
         
         private fun toJsonArray(results: List<ActionExecutorService.ExecutionResult>): String {
