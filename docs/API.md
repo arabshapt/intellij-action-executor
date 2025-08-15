@@ -1,10 +1,18 @@
 # API Reference
 
-## Base URL
+## Base URLs
 
+### Primary: Custom Server (No Rate Limiting)
+```
+http://localhost:63343/api/intellij-actions
+```
+
+### Fallback: Built-in IntelliJ REST API
 ```
 http://localhost:63342/api/intellij-actions
 ```
+
+**Note:** The CLI tool automatically tries the custom server first (port 63343) and falls back to the built-in API (port 63342) if unavailable.
 
 ## Endpoints
 
@@ -188,7 +196,7 @@ GET /api/intellij-actions/health
 {
   "status": "healthy",
   "plugin": "intellij-action-executor",
-  "version": "1.0.7",
+  "version": "1.1.3",
   "timestamp": "2025-08-14T15:30:45.123Z"
 }
 ```
@@ -337,6 +345,13 @@ IntelliJ's built-in REST API may impose rate limiting (429 Too Many Requests) wh
 ### Custom Server (Port 63343) - NO RATE LIMITING
 Starting from version 1.0.8, the plugin includes a custom HTTP server on port 63343 that has NO rate limiting. The CLI tool automatically tries this server first.
 
+**Architecture Details:**
+- **Thread Pool**: 10-thread executor for concurrent request handling
+- **Lightweight**: Uses Java's built-in HttpServer (com.sun.net.httpserver)
+- **CORS Enabled**: Supports browser-based automation tools
+- **Auto-start**: Initialized via PluginStartup ProjectActivity
+- **Graceful Shutdown**: Properly stops when IntelliJ closes
+
 **Benefits of Custom Server:**
 - No rate limiting (429 errors)
 - Faster response times for batch operations
@@ -358,7 +373,11 @@ curl "http://localhost:63343/api/intellij-actions/execute?action=ReformatCode"
 curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 ```
 
-**Note:** Actions are executed asynchronously to prevent blocking. Complex actions may take time to complete.
+**Note:** Actions are executed with intelligent threading:
+- **Dialog Actions**: Execute asynchronously via `invokeLater`
+- **Regular Actions**: Execute synchronously in chains via `invokeAndWait`
+- **UI Actions**: Include additional delays for state updates
+- **EDT Safety**: All UI operations run on Event Dispatch Thread (v1.1.3+)
 
 ## Security
 
@@ -380,7 +399,7 @@ For additional security:
 
 API version is included in the health check response. The API is backward compatible within major versions.
 
-Current version: 1.0.7
+Current version: 1.1.3
 
 ## Support
 

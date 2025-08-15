@@ -78,7 +78,7 @@ Then use these short commands in LeaderKey:
 ## Requirements
 
 - IntelliJ IDEA must be running
-- Action Executor plugin (v1.0.7) must be installed
+- Action Executor plugin (v1.1.3) must be installed
 - IntelliJ REST API is available on port 63342
 
 ## Benefits of This Approach

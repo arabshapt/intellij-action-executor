@@ -31,7 +31,7 @@ curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 
 ### Option 1: Install from JAR (Recommended)
 
-1. Download the latest `intellijPlugin-1.0.8.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
+1. Download the latest `intellijPlugin-1.1.3.zip` from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
 2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk...`
 3. Select the downloaded ZIP file
 4. Restart IntelliJ IDEA

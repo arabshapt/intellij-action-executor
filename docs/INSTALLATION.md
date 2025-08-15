@@ -102,7 +102,7 @@ curl http://localhost:63342/api/intellij-actions/health
 
 Expected response:
 ```json
-{"status":"healthy","plugin":"intellij-action-executor","version":"1.0.7"}
+{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.3"}
 ```
 
 ### CLI Verification

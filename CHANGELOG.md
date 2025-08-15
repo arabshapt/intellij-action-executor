@@ -2,6 +2,45 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.3] - 2025-08-15
+
+### Fixed
+- **Critical**: "Access is allowed from Event Dispatch Thread (EDT) only" errors
+- DataContext creation now happens inside EDT execution block
+- All UI operations properly wrapped in EDT-safe Runnable blocks
+- Context-dependent actions (CopyPaths, CopyAbsolutePath) now work reliably
+
+### Changed
+- Refactored executeActionInternal to ensure complete EDT safety
+- Moved project and context retrieval inside EDT execution
+- Improved synchronous/asynchronous execution logic based on action type
+
+### Improved
+- Better error handling with detailed exception logging
+- More robust execution flow for action chains
+- Clearer separation between dialog and regular actions
+
+## [1.1.2] - 2025-08-14
+
+### Added
+- Adopted ataman-intellij plugin's execution approach for better action compatibility
+- ActionUtil.invokeAction() for proper action execution
+- ActionUtil.performDumbAwareUpdate() for action state validation
+
+### Changed
+- All actions now use ActionPlaces.KEYBOARD_SHORTCUT for consistent context
+- Replaced direct action.actionPerformed() calls with ActionUtil methods
+- Event creation now matches keyboard shortcut behavior exactly
+
+### Fixed
+- Context-dependent actions that were previously disabled
+- Actions requiring specific UI context now work correctly
+- Git and refactoring actions have proper context
+
+### Technical
+- Better alignment with IntelliJ's action execution patterns
+- More reliable action state updates before execution
+
 ## [1.1.0] - 2025-08-14
 
 ### Added

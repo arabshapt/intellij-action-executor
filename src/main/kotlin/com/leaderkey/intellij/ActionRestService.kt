@@ -122,7 +122,7 @@ class ActionRestService : RestService() {
         val response = mapOf(
             "status" to "healthy",
             "service" to "intellij-action-executor",
-            "version" to "1.0.0"
+            "version" to "1.1.3"
         )
         return toJson(response)
     }
