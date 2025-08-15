@@ -63,71 +63,64 @@ class ActionExecutorService {
             
             LOG.info("Action found: ${action.javaClass.name}")
             
-            // Try the simplest approach - just execute it
-            val project = getActiveProject()
-            LOG.info("Active project: ${project?.name ?: "null"}")
+            // Execute everything on EDT to avoid threading issues
+            var executionResult: ExecutionResult? = null
+            var executionException: Exception? = null
             
-            // Create comprehensive data context with all available information
-            val dataContext = createComprehensiveDataContext(project)
-            
-            // Use ataman's approach - always use KEYBOARD_SHORTCUT
-            val presentation = Presentation()
-            val event = AnActionEvent(
-                null,
-                dataContext,
-                ActionPlaces.KEYBOARD_SHORTCUT,
-                presentation,
-                actionManager,
-                0
-            )
-            
-            LOG.info("Created AnActionEvent with KEYBOARD_SHORTCUT place")
-            
-            // Use ActionUtil to properly update and check if enabled
-            ActionUtil.performDumbAwareUpdate(action, event, true)
-            LOG.info("Action enabled after update: ${event.presentation.isEnabled}")
-            
-            if (!event.presentation.isEnabled) {
-                LOG.warn("Action is disabled: $actionId")
-                LOG.warn("Data context details - Has editor: ${dataContext.getData(CommonDataKeys.EDITOR) != null}, " +
-                        "Has file: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null}, " +
-                        "Has file array: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.size ?: 0}, " +
-                        "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}")
-                return ExecutionResult(false, actionId, error = "Action is disabled in current context")
+            val executeOnEdt = Runnable {
+                try {
+                    // Get project and create data context on EDT
+                    val project = getActiveProject()
+                    LOG.info("Active project: ${project?.name ?: "null"}")
+                    
+                    // Create comprehensive data context with all available information
+                    val dataContext = createComprehensiveDataContext(project)
+                    
+                    // Use ataman's approach - always use KEYBOARD_SHORTCUT
+                    val presentation = Presentation()
+                    val event = AnActionEvent(
+                        null,
+                        dataContext,
+                        ActionPlaces.KEYBOARD_SHORTCUT,
+                        presentation,
+                        actionManager,
+                        0
+                    )
+                    
+                    LOG.info("Created AnActionEvent with KEYBOARD_SHORTCUT place")
+                    
+                    // Use ActionUtil to properly update and check if enabled
+                    ActionUtil.performDumbAwareUpdate(action, event, true)
+                    LOG.info("Action enabled after update: ${event.presentation.isEnabled}")
+                    
+                    if (!event.presentation.isEnabled) {
+                        LOG.warn("Action is disabled: $actionId")
+                        LOG.warn("Data context details - Has editor: ${dataContext.getData(CommonDataKeys.EDITOR) != null}, " +
+                                "Has file: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE) != null}, " +
+                                "Has file array: ${dataContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.size ?: 0}, " +
+                                "Has PSI: ${dataContext.getData(CommonDataKeys.PSI_FILE) != null}")
+                        executionResult = ExecutionResult(false, actionId, error = "Action is disabled in current context")
+                        return@Runnable
+                    }
+                    
+                    LOG.info("About to perform action: $actionId")
+                    ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
+                    LOG.info("Action completed: $actionId")
+                    
+                    executionResult = ExecutionResult(true, actionId, "Action triggered successfully")
+                } catch (e: Exception) {
+                    LOG.error("Error executing action: $actionId", e)
+                    executionException = e
+                }
             }
             
-            LOG.info("About to perform action: $actionId")
-            
+            // Execute on EDT based on wait preference
             if (waitForCompletion && !isDialogAction(actionId)) {
                 // For non-dialog actions in a sequence, wait for completion
-                var executionException: Exception? = null
-                
                 if (ApplicationManager.getApplication().isDispatchThread) {
-                    // If we're already on EDT, just execute directly
-                    try {
-                        LOG.info("Executing action directly on EDT: $actionId")
-                        ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
-                        LOG.info("Action completed directly: $actionId")
-                    } catch (e: Exception) {
-                        LOG.error("Error in direct action execution: $actionId", e)
-                        executionException = e
-                    }
+                    executeOnEdt.run()
                 } else {
-                    // If not on EDT, use invokeAndWait
-                    ApplicationManager.getApplication().invokeAndWait {
-                        try {
-                            LOG.info("Executing action synchronously via invokeAndWait: $actionId")
-                            ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
-                            LOG.info("Action completed synchronously: $actionId")
-                        } catch (e: Exception) {
-                            LOG.error("Error in synchronous action execution: $actionId", e)
-                            executionException = e
-                        }
-                    }
-                }
-                
-                if (executionException != null) {
-                    return ExecutionResult(false, actionId, error = executionException?.message)
+                    ApplicationManager.getApplication().invokeAndWait(executeOnEdt)
                 }
                 
                 // For UI actions, give a small delay for UI to update
@@ -136,19 +129,16 @@ class ActionExecutorService {
                 }
             } else {
                 // For dialog actions or single executions, use async
-                ApplicationManager.getApplication().invokeLater {
-                    try {
-                        LOG.info("Executing action asynchronously on EDT: $actionId")
-                        ActionUtil.invokeAction(action, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
-                        LOG.info("Action completed asynchronously: $actionId")
-                    } catch (e: Exception) {
-                        LOG.error("Error in asynchronous action execution: $actionId", e)
-                    }
-                }
+                ApplicationManager.getApplication().invokeLater(executeOnEdt)
+                // Return success immediately for async actions
+                return ExecutionResult(true, actionId, "Action triggered successfully")
             }
             
-            LOG.info("Returning success for: $actionId")
-            ExecutionResult(true, actionId, "Action triggered successfully")
+            if (executionException != null) {
+                return ExecutionResult(false, actionId, error = executionException?.message)
+            }
+            
+            return executionResult ?: ExecutionResult(false, actionId, error = "Unknown error")
         } catch (e: Exception) {
             LOG.error("Failed to execute action: $actionId", e)
             ExecutionResult(false, actionId, error = e.message)
