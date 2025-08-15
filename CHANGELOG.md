@@ -2,6 +2,23 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.4] - 2025-08-15
+
+### Fixed
+- Tree navigation actions (Tree-selectFirst, Tree-selectNext) now work correctly in action chains
+- Actions now receive live DataContext from the focused component instead of static snapshot
+- Git.CompareWithBranch and similar context-dependent actions now operate on correct selection
+
+### Changed
+- Replaced static DataContext creation with live context retrieval using DataManager
+- Added getLiveDataContext method that gets context from currently focused component
+- Improved context resolution with fallback to synthetic context for headless/testing scenarios
+
+### Improved
+- Universal solution for all actions - no special handling needed for different action types
+- Better focus handling ensures actions operate on the correct UI component
+- More accurate context state between chained actions
+
 ## [1.1.3] - 2025-08-15
 
 ### Fixed

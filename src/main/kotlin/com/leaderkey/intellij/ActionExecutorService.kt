@@ -20,6 +20,8 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.projectView.impl.nodes.PsiFileNode
 import com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode
+import com.intellij.ide.DataManager
+import com.intellij.openapi.wm.IdeFocusManager
 import javax.swing.SwingUtilities
 
 @Service
@@ -73,8 +75,8 @@ class ActionExecutorService {
                     val project = getActiveProject()
                     LOG.info("Active project: ${project?.name ?: "null"}")
                     
-                    // Create comprehensive data context with all available information
-                    val dataContext = createComprehensiveDataContext(project)
+                    // Get live data context from focused component or fallback to synthetic
+                    val dataContext = getLiveDataContext(project)
                     
                     // Use ataman's approach - always use KEYBOARD_SHORTCUT
                     val presentation = Presentation()
@@ -316,6 +318,36 @@ class ActionExecutorService {
         }
         
         return builder.build()
+    }
+    
+    private fun getLiveDataContext(project: Project?): DataContext {
+        if (project == null) {
+            LOG.info("No project available, returning empty context")
+            return SimpleDataContext.EMPTY_CONTEXT
+        }
+        
+        // Try to get context from focused component
+        val focusOwner = IdeFocusManager.getInstance(project).focusOwner
+        if (focusOwner != null) {
+            LOG.info("Got live context from focused component: ${focusOwner.javaClass.simpleName}")
+            return DataManager.getInstance().getDataContext(focusOwner)
+        }
+        
+        // Try async focus context
+        try {
+            val asyncContext = DataManager.getInstance().getDataContextFromFocusAsync()
+                .blockingGet(100)
+            if (asyncContext != null) {
+                LOG.info("Got live context from async focus")
+                return asyncContext
+            }
+        } catch (e: Exception) {
+            LOG.debug("Could not get async focus context: ${e.message}")
+        }
+        
+        // Fallback to synthetic context (for headless/testing)
+        LOG.info("No focused component found, using synthetic context as fallback")
+        return createComprehensiveDataContext(project)
     }
     
     private fun getCurrentEditor(project: Project?): Editor? {
