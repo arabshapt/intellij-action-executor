@@ -2,6 +2,36 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.1.7] - 2025-08-15
+
+### Added
+- Action History Tracking with persistent storage in ~/.intellij-actions/
+- Execution statistics tracking (success/failure rates, execution times)
+- Usage pattern analysis to identify frequently used action sequences
+- Intelligent suggestions based on usage patterns and failure rates
+- History HTTP endpoints: `/history`, `/stats`, `/suggestions`
+- CLI analytics commands: `--history`, `--stats`, `--suggestions`
+- Gson dependency for JSON serialization
+
+### Changed
+- ActionExecutorService now records all executions with timing and error details
+- Action chains are tracked to identify common usage patterns
+- History automatically persists every 30 seconds and on shutdown
+
+### Improved
+- Better understanding of user workflows through usage analytics
+- Proactive suggestions for optimizing action sequences
+- Identification of frequently failing actions for troubleshooting
+- Performance insights with execution time tracking
+
+### CLI Examples
+```bash
+ij --history 20          # Show last 20 executed actions
+ij --stats ReformatCode  # Show statistics for specific action
+ij --stats               # Show top 20 most used actions
+ij --suggestions         # Get usage suggestions and patterns
+```
+
 ## [1.1.6] - 2025-08-15
 
 ### Added

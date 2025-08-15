@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.leaderkey"
-version = "1.1.6"
+version = "1.1.7"
 
 repositories {
     mavenCentral()
@@ -15,6 +15,7 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation("com.google.code.gson:gson:2.10.1")
 }
 
 intellij {

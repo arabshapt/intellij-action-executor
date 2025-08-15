@@ -23,6 +23,9 @@ class CustomHttpServer(private val port: Int = 63343) {
                 createContext("/api/intellij-actions/check", CheckHandler())
                 createContext("/api/intellij-actions/search", SearchHandler())
                 createContext("/api/intellij-actions/explain", ExplainHandler())
+                createContext("/api/intellij-actions/history", HistoryHandler())
+                createContext("/api/intellij-actions/stats", StatsHandler())
+                createContext("/api/intellij-actions/suggestions", SuggestionsHandler())
                 setExecutor(executor)
                 start()
                 LOG.info("Custom HTTP server started on port $port")
@@ -73,7 +76,7 @@ class CustomHttpServer(private val port: Int = 63343) {
     
     private class HealthHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
-            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.6","server":"custom","port":63343}"""
+            val response = """{"status":"healthy","plugin":"intellij-action-executor","version":"1.1.7","server":"custom","port":63343}"""
             CustomHttpServer.sendResponse(exchange, 200, response)
         }
     }
@@ -249,6 +252,86 @@ class CustomHttpServer(private val port: Int = 63343) {
                     "needsGit":$needsGit,
                     "needsBuildSystem":$needsBuildSystem
                 }"""
+            }
+        }
+    }
+    
+    private class HistoryHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                val limit = params["limit"]?.toIntOrNull() ?: 50
+                
+                val historyService = ActionHistoryService.getInstance()
+                val history = historyService.getRecentHistory(limit)
+                
+                val historyJson = history.joinToString(",") { entry ->
+                    """{"actionId":"${entry.actionId}","timestamp":"${entry.timestamp}","success":${entry.success},"executionTimeMs":${entry.executionTimeMs},"errorType":${entry.errorType?.let { "\"$it\"" } ?: "null"},"chainedWith":${entry.chainedWith?.let { "[${it.joinToString(",") { action -> "\"$action\"" }}]" } ?: "null"}}"""
+                }
+                
+                val response = """{"history":[$historyJson],"count":${history.size}}"""
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
+    private class StatsHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val query = exchange.requestURI.query
+                val params = CustomHttpServer.parseQuery(query)
+                val actionId = params["action"]
+                
+                val historyService = ActionHistoryService.getInstance()
+                
+                val response = if (actionId != null) {
+                    // Get stats for specific action
+                    val stats = historyService.getActionStats(actionId)
+                    if (stats != null) {
+                        """{"actionId":"${stats.actionId}","executionCount":${stats.executionCount},"successCount":${stats.successCount},"failureCount":${stats.failureCount},"averageTimeMs":${stats.averageTimeMs},"lastUsed":"${stats.lastUsed}","commonlyChainedWith":${stats.commonlyChainedWith.entries.joinToString(",", "{", "}") { "\"${it.key}\":${it.value}" }}}"""
+                    } else {
+                        """{"error":"No statistics available for action: $actionId"}"""
+                    }
+                } else {
+                    // Get top actions
+                    val limit = params["limit"]?.toIntOrNull() ?: 20
+                    val topActions = historyService.getTopActions(limit)
+                    val statsJson = topActions.joinToString(",") { stats ->
+                        """{"actionId":"${stats.actionId}","executionCount":${stats.executionCount},"successCount":${stats.successCount},"failureCount":${stats.failureCount},"averageTimeMs":${stats.averageTimeMs},"lastUsed":"${stats.lastUsed}"}"""
+                    }
+                    """{"topActions":[$statsJson],"count":${topActions.size}}"""
+                }
+                
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
+    private class SuggestionsHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val historyService = ActionHistoryService.getInstance()
+                val suggestions = historyService.getSuggestions()
+                
+                val patternsJson = historyService.getCommonPatterns().take(5).joinToString(",") { pattern ->
+                    val sequenceJson = pattern.sequence.joinToString(",") { "\"$it\"" }
+                    """{"sequence":[$sequenceJson],"frequency":${pattern.frequency},"averageTimeMs":${pattern.averageTimeMs},"suggestion":${pattern.suggestion?.let { "\"$it\"" } ?: "null"}}"""
+                }
+                
+                val suggestionsJson = suggestions.joinToString(",") { "\"$it\"" }
+                
+                val response = """{"suggestions":[$suggestionsJson],"patterns":[$patternsJson]}"""
+                CustomHttpServer.sendResponse(exchange, 200, response)
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
             }
         }
     }

@@ -65,6 +65,7 @@ class ActionExecutorService {
     }
     
     private fun executeActionInternal(actionId: String, waitForCompletion: Boolean): ExecutionResult {
+        val startTime = System.currentTimeMillis()
         return try {
             LOG.info("Starting execution of action: $actionId (wait=$waitForCompletion)")
             LOG.info("Current thread: ${Thread.currentThread().name}")
@@ -75,13 +76,22 @@ class ActionExecutorService {
             
             if (action == null) {
                 LOG.warn("Action not found: $actionId")
-                return ExecutionResult(
+                val result = ExecutionResult(
                     success = false,
                     actionId = actionId,
                     error = "Action not found: $actionId",
                     errorType = ErrorType.ACTION_NOT_FOUND,
                     suggestion = "Check available actions with 'ij --list' or search with 'ij --search ${actionId.take(5)}'"
                 )
+                // Record failure in history
+                val executionTime = System.currentTimeMillis() - startTime
+                ActionHistoryService.getInstance().recordExecution(
+                    actionId = actionId,
+                    success = false,
+                    executionTimeMs = executionTime,
+                    errorType = ErrorType.ACTION_NOT_FOUND
+                )
+                return result
             }
             
             LOG.info("Action found: ${action.javaClass.name}")
@@ -164,36 +174,64 @@ class ActionExecutorService {
             } else {
                 // For dialog actions or single executions, use async
                 ApplicationManager.getApplication().invokeLater(executeOnEdt)
-                // Return success immediately for async actions
+                // Return success immediately for async actions (don't record yet as it's async)
                 return ExecutionResult(true, actionId, "Action triggered successfully")
             }
             
+            // Record execution history for synchronous actions
+            val executionTime = System.currentTimeMillis() - startTime
+            
             if (executionException != null) {
-                return ExecutionResult(
+                val result = ExecutionResult(
                     success = false,
                     actionId = actionId,
                     error = executionException?.message,
                     errorType = ErrorType.UNKNOWN_ERROR,
                     suggestion = "Check IntelliJ logs for details. Try restarting IntelliJ if the problem persists."
                 )
+                ActionHistoryService.getInstance().recordExecution(
+                    actionId = actionId,
+                    success = false,
+                    executionTimeMs = executionTime,
+                    errorType = ErrorType.UNKNOWN_ERROR
+                )
+                return result
             }
             
-            return executionResult ?: ExecutionResult(
+            val finalResult = executionResult ?: ExecutionResult(
                 success = false,
                 actionId = actionId,
                 error = "Unknown error",
                 errorType = ErrorType.UNKNOWN_ERROR,
                 suggestion = "The action failed for an unknown reason. Check IntelliJ logs for details."
             )
+            
+            // Record the execution in history
+            ActionHistoryService.getInstance().recordExecution(
+                actionId = actionId,
+                success = finalResult.success,
+                executionTimeMs = executionTime,
+                errorType = finalResult.errorType
+            )
+            
+            return finalResult
         } catch (e: Exception) {
             LOG.error("Failed to execute action: $actionId", e)
-            ExecutionResult(
+            val executionTime = System.currentTimeMillis() - startTime
+            val result = ExecutionResult(
                 success = false,
                 actionId = actionId,
                 error = e.message,
                 errorType = ErrorType.UNKNOWN_ERROR,
                 suggestion = "An unexpected error occurred. Check IntelliJ logs for details."
             )
+            ActionHistoryService.getInstance().recordExecution(
+                actionId = actionId,
+                success = false,
+                executionTimeMs = executionTime,
+                errorType = ErrorType.UNKNOWN_ERROR
+            )
+            return result
         }
     }
     
@@ -214,9 +252,28 @@ class ActionExecutorService {
         for ((index, actionId) in actionIds.withIndex()) {
             LOG.info("Executing action ${index + 1}/${actionIds.size}: $actionId")
             
+            // Determine chained actions for history tracking
+            val chainedWith = if (actionIds.size > 1) {
+                actionIds.filterIndexed { i, _ -> i != index }
+            } else null
+            
+            val startTime = System.currentTimeMillis()
+            
             // Use synchronous execution for all actions in a chain to ensure proper sequencing
             val result = executeActionAndWait(actionId)
             results.add(result)
+            
+            // Record chain execution in history
+            if (chainedWith != null) {
+                val executionTime = System.currentTimeMillis() - startTime
+                ActionHistoryService.getInstance().recordExecution(
+                    actionId = actionId,
+                    success = result.success,
+                    executionTimeMs = executionTime,
+                    errorType = result.errorType,
+                    chainedWith = chainedWith
+                )
+            }
             
             if (!result.success) {
                 LOG.warn("Stopping action chain due to failure at action '$actionId': ${result.error}")
