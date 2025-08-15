@@ -13,12 +13,15 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.IdeFocusManager
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ide.DataManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
+import java.awt.Component
+import javax.swing.SwingUtilities
 
 @Service
 class StateQueryService {
@@ -118,6 +121,23 @@ class StateQueryService {
                 project?.let { DumbService.getInstance(it).isDumb } ?: false
             }
             
+            // Focus conditions
+            stateId == "focusInEditor" || stateId == "editorHasFocus" -> {
+                project?.let { isEditorFocused(it) } ?: false
+            }
+            stateId == "focusInProject" -> {
+                project?.let { getFocusedToolWindow(it) == "Project" } ?: false
+            }
+            stateId == "focusInTerminal" -> {
+                project?.let { getFocusedToolWindow(it) == "Terminal" } ?: false
+            }
+            stateId == "focusInToolWindow" -> {
+                project?.let { getFocusedToolWindow(it) != null } ?: false
+            }
+            stateId == "hasFocus" || stateId == "ideFocused" -> {
+                isIDEFocused(project)
+            }
+            
             // VCS conditions (basic check - Git plugin might not be available)
             stateId == "gitRepository" || stateId == "hasGit" -> {
                 project?.let { proj ->
@@ -139,6 +159,14 @@ class StateQueryService {
             stateId.startsWith("hasExtension:") -> {
                 val ext = stateId.removePrefix("hasExtension:")
                 project?.let { hasFileExtension(it, ext) } ?: false
+            }
+            stateId.startsWith("focusInToolWindow:") -> {
+                val toolWindowId = stateId.removePrefix("focusInToolWindow:")
+                project?.let { getFocusedToolWindow(it) == toolWindowId } ?: false
+            }
+            stateId.startsWith("focusInFile:") -> {
+                val fileName = stateId.removePrefix("focusInFile:")
+                project?.let { getFocusedFileName(it) == fileName } ?: false
             }
             
             // Existing conditions
@@ -232,5 +260,41 @@ class StateQueryService {
     private fun hasFileExtension(project: Project, extension: String): Boolean {
         val file = getCurrentVirtualFile(project) ?: return false
         return file.extension?.equals(extension, ignoreCase = true) == true
+    }
+    
+    private fun getFocusedToolWindow(project: Project): String? {
+        val toolWindowManager = ToolWindowManager.getInstance(project)
+        val focusOwner = IdeFocusManager.getInstance(project).focusOwner ?: return null
+        
+        // Check each tool window to see if it contains the focused component
+        for (toolWindowId in toolWindowManager.toolWindowIds) {
+            val toolWindow = toolWindowManager.getToolWindow(toolWindowId) ?: continue
+            val toolWindowComponent = toolWindow.component
+            if (isComponentAncestor(toolWindowComponent, focusOwner)) {
+                return toolWindowId
+            }
+        }
+        return null
+    }
+    
+    private fun isEditorFocused(project: Project): Boolean {
+        val focusOwner = IdeFocusManager.getInstance(project).focusOwner ?: return false
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return false
+        return isComponentAncestor(editor.component, focusOwner)
+    }
+    
+    private fun getFocusedFileName(project: Project): String? {
+        if (!isEditorFocused(project)) return null
+        return getCurrentVirtualFile(project)?.name
+    }
+    
+    private fun isComponentAncestor(ancestor: Component, descendant: Component): Boolean {
+        return ancestor == descendant || SwingUtilities.isDescendingFrom(descendant, ancestor)
+    }
+    
+    private fun isIDEFocused(project: Project?): Boolean {
+        if (project == null) return false
+        val frame = WindowManager.getInstance().getFrame(project)
+        return frame?.isFocused ?: false
     }
 }
