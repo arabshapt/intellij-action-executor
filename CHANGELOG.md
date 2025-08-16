@@ -2,7 +2,7 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
-## [1.2.0] - 2025-08-15
+## [1.2.0] - 2025-08-16
 
 ### Added
 - **Conditional Action Execution System**
@@ -23,6 +23,11 @@ All notable changes to the IntelliJ Action Executor plugin will be documented in
   - Pipe (`|`): OR fallback - try alternatives
   - Force flag (`-f`): Continue chains despite failures
 
+- **Negation Support**
+  - `!<condition>`: Negate any condition with exclamation mark
+  - `not:<condition>`: Alternative negation syntax
+  - Works with all condition types (basic, focus, parameterized)
+
 ### CLI Examples
 ```bash
 # Conditional execution
@@ -32,6 +37,12 @@ ij -ia Git.Pull --then Git.Pull,Git.Push
 # OR fallback chains
 ij Git.Pull | Git.Fetch | ShowSettings
 ij SaveAll,ReformatCode | BackupSave
+
+# Negation examples
+ij --if !projectView --then ActivateProjectToolWindow
+ij --if not:editor --then OpenFile
+ij --if !isIndexing --then Build
+ij --if !hasModifications --then Git.Pull
 
 # Complex combinations
 ij -dqf Git.Pull,Git.Push | SaveAll

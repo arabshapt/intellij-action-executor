@@ -73,6 +73,12 @@ done
 # Parse long flags
 while [[ "$1" == --* ]]; do
     case "$1" in
+        --if)
+            shift
+            IF_CHECK="$1"
+            CONDITIONAL_MODE="if-then-else"
+            shift
+            ;;
         --if-editor)
             IF_CHECK="editor"
             CONDITIONAL_MODE="if-then-else"
@@ -227,13 +233,16 @@ if [ -z "$ACTIONS_STRING" ] && [ "$CONDITIONAL_MODE" != "if-then-else" ]; then
     echo "  -f, --force      Continue chain even if actions fail"
     echo ""
     echo "Conditional options:"
-    echo "  -ie, --if-editor          If editor is open"
-    echo "  -if, --if-file            If file is open"
-    echo "  -ip, --if-project         If project is open"
-    echo "  -ia <action>, --if-action <action>  If action is enabled"
-    echo "  -iw <window>, --if-window <window>  If tool window is active"
+    echo "  --if <condition>          Check any condition (see list below)"
     echo "  --then <actions>          Actions to run if condition is true"
     echo "  --else <actions>          Actions to run if condition is false"
+    echo ""
+    echo "Shortcut conditional flags:"
+    echo "  -ie, --if-editor          If editor is open (same as --if editor)"
+    echo "  -if, --if-file            If file is open (same as --if file)"
+    echo "  -ip, --if-project         If project is open (same as --if project)"
+    echo "  -ia <action>              If action is enabled (same as --if <action>:enabled)"
+    echo "  -iw <window>              If tool window is active (same as --if <window>:window)"
     echo ""
     echo "Available conditions for --if:"
     echo "  editor, file, project     Basic state checks"
@@ -258,9 +267,14 @@ if [ -z "$ACTIONS_STRING" ] && [ "$CONDITIONAL_MODE" != "if-then-else" ]; then
     echo "  <action>:enabled          Action is available"
     echo "  <window>:window           Tool window is visible"
     echo ""
+    echo "Negation operators:"
+    echo "  !<condition>              Negate any condition with !"
+    echo "  not:<condition>           Alternative negation syntax"
+    echo ""
     echo "Operators:"
     echo "  ,                Sequence (AND) - stops on failure"
     echo "  |                Alternative (OR) - try until one succeeds"
+    echo "  !                Negation - invert condition result"
     echo ""
     echo "Execution options:"
     echo "  --force-builtin  Use built-in API instead of custom server"
@@ -288,6 +302,10 @@ if [ -z "$ACTIONS_STRING" ] && [ "$CONDITIONAL_MODE" != "if-then-else" ]; then
     echo "  ij --if focusInEditor --then SaveAll       # If focus in editor"
     echo "  ij --if focusInTerminal --then RunCommand  # If focus in terminal"
     echo "  ij --if focusInToolWindow:Database --then DatabaseRefresh"
+    echo "  ij --if '!projectView' --then ActivateProjectToolWindow  # If project view NOT open"
+    echo "  ij --if not:editor --then OpenFile         # If NOT in editor"
+    echo "  ij --if '!isIndexing' --then Build         # If NOT indexing (quote ! in zsh)"
+    echo "  ij --if not:hasModifications --then Git.Pull  # If NO unsaved changes"
     echo "  ij -d SaveAll                              # Fire and forget"
     echo "  ij -dq SaveAll,ReformatCode                # Detached + quiet"
     echo "  ij -f Action1,Action2                       # Continue on failures"

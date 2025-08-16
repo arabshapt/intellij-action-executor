@@ -27,6 +27,7 @@ class CustomHttpServer(private val port: Int = 63343) {
                 createContext("/api/intellij-actions/stats", StatsHandler())
                 createContext("/api/intellij-actions/suggestions", SuggestionsHandler())
                 createContext("/api/intellij-actions/state/query", StateHandler())
+                createContext("/api/intellij-actions/state/toolwindows", ToolWindowsHandler())
                 createContext("/api/intellij-actions/execute/conditional", ConditionalHandler())
                 setExecutor(executor)
                 start()
@@ -338,6 +339,31 @@ class CustomHttpServer(private val port: Int = 63343) {
         }
     }
     
+    private class ToolWindowsHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            try {
+                val stateService = StateQueryService.getInstance()
+                val toolWindows = stateService.getAllToolWindows()
+                
+                val json = StringBuilder("{")
+                toolWindows.entries.forEachIndexed { index, (id, states) ->
+                    if (index > 0) json.append(",")
+                    json.append("\"$id\":{")
+                    json.append("\"visible\":${states["visible"]},")
+                    json.append("\"active\":${states["active"]},")
+                    json.append("\"available\":${states["available"]}")
+                    json.append("}")
+                }
+                json.append("}")
+                
+                CustomHttpServer.sendResponse(exchange, 200, json.toString())
+            } catch (e: Exception) {
+                val error = """{"success":false,"error":"${e.message}"}"""
+                CustomHttpServer.sendResponse(exchange, 500, error)
+            }
+        }
+    }
+    
     private class StateHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
             try {
@@ -352,6 +378,7 @@ class CustomHttpServer(private val port: Int = 63343) {
                 }
                 
                 val checks = checksParam.split(",").map { it.trim() }
+                
                 val stateService = StateQueryService.getInstance()
                 val results = stateService.queryStates(checks)
                 
