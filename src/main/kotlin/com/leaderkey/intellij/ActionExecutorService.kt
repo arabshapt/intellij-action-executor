@@ -303,16 +303,21 @@ class ActionExecutorService {
     }
     
     private fun getActiveProject(): Project? {
-        // Try to get the most recently focused project
-        val projectManager = ProjectManager.getInstance()
-        val openProjects = projectManager.openProjects
+        val projects = ProjectManager.getInstance().openProjects
+        if (projects.isEmpty()) return null
         
-        if (openProjects.isEmpty()) {
-            return null
+        // Try to get the project with focus (same logic as StateQueryService)
+        for (project in projects) {
+            val toolWindowManager = ToolWindowManager.getInstance(project)
+            if (toolWindowManager.isEditorComponentActive) {
+                LOG.info("Found active project with editor focus: ${project.name}")
+                return project
+            }
         }
         
-        // Return the first open project
-        return openProjects.firstOrNull()
+        // Fallback to first open project if none have active editor
+        LOG.info("No project has active editor, using first project: ${projects.firstOrNull()?.name}")
+        return projects.firstOrNull()
     }
     
     
