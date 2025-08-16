@@ -29,6 +29,12 @@ test_command "Focus in specific tool window" "ij --if focusInToolWindow:Project 
 test_command "Focus in Database tool window" "ij --if focusInToolWindow:Database --then CollapseAll --else ExpandAll"
 test_command "Focus in specific file" "ij --if focusInFile:Main.java --then CollapseAll --else ExpandAll"
 
+# Test new :focus suffix pattern
+test_command "Project:focus pattern" "ij --if Project:focus --then CollapseAll --else ExpandAll"
+test_command "Terminal:focus pattern" "ij --if Terminal:focus --then CollapseAll --else ExpandAll"
+test_command "Negated :focus pattern" "ij --if not:Project:focus --then CollapseAll --else ExpandAll"
+test_command "Quoted negation :focus pattern" "ij --if '!Terminal:focus' --then CollapseAll --else ExpandAll"
+
 # Test API focus conditions
 test_condition "Focus in editor check" "focusInEditor" "true"
 test_condition "Focus in project check" "focusInProject" "true"
