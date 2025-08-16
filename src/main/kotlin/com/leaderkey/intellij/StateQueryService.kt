@@ -55,6 +55,11 @@ class StateQueryService {
         return result
     }
     
+    fun isToolWindowFocused(toolWindowId: String): Boolean {
+        val project = getActiveProject() ?: return false
+        return getFocusedToolWindow(project) == toolWindowId
+    }
+    
     fun isActionEnabled(actionId: String): Boolean {
         val actionManager = ActionManager.getInstance()
         val action = actionManager.getAction(actionId) ?: return false
@@ -207,6 +212,10 @@ class StateQueryService {
             }
             
             // Existing conditions
+            actualStateId.endsWith(":focus") -> {
+                val windowId = actualStateId.removeSuffix(":focus")
+                isToolWindowFocused(windowId)
+            }
             actualStateId.endsWith(":enabled") -> {
                 val actionId = actualStateId.removeSuffix(":enabled")
                 isActionEnabled(actionId)
