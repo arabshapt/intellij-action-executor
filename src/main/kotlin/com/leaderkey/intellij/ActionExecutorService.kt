@@ -17,6 +17,7 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.openapi.module.ModuleUtil
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.projectView.impl.nodes.PsiFileNode
 import com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode
@@ -306,17 +307,26 @@ class ActionExecutorService {
         val projects = ProjectManager.getInstance().openProjects
         if (projects.isEmpty()) return null
         
-        // Try to get the project with focus (same logic as StateQueryService)
+        // First, try to get the project whose window has OS focus
         for (project in projects) {
-            val toolWindowManager = ToolWindowManager.getInstance(project)
-            if (toolWindowManager.isEditorComponentActive) {
-                LOG.info("Found active project with editor focus: ${project.name}")
+            val frame = WindowManager.getInstance().getFrame(project)
+            if (frame?.isFocused == true) {
+                LOG.info("Found focused project window: ${project.name}")
                 return project
             }
         }
         
-        // Fallback to first open project if none have active editor
-        LOG.info("No project has active editor, using first project: ${projects.firstOrNull()?.name}")
+        // Fallback: try to get the project with active editor component
+        for (project in projects) {
+            val toolWindowManager = ToolWindowManager.getInstance(project)
+            if (toolWindowManager.isEditorComponentActive) {
+                LOG.info("Found project with active editor: ${project.name}")
+                return project
+            }
+        }
+        
+        // Final fallback to first open project
+        LOG.info("No focused project found, using first: ${projects.firstOrNull()?.name}")
         return projects.firstOrNull()
     }
     

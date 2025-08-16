@@ -284,28 +284,53 @@ class StateQueryService {
         
         // If we're already on EDT, don't use invokeAndWait
         if (ApplicationManager.getApplication().isDispatchThread) {
-            // Try to get the project with focus
+            // First, try to get the project whose window has OS focus
             for (project in projects) {
-                val windowManager = ToolWindowManager.getInstance(project)
-                if (windowManager.isEditorComponentActive) {
+                val frame = WindowManager.getInstance().getFrame(project)
+                if (frame?.isFocused == true) {
+                    LOG.info("Found focused project window: ${project.name}")
                     return project
                 }
             }
+            
+            // Fallback: try to get the project with active editor component
+            for (project in projects) {
+                val toolWindowManager = ToolWindowManager.getInstance(project)
+                if (toolWindowManager.isEditorComponentActive) {
+                    LOG.info("Found project with active editor: ${project.name}")
+                    return project
+                }
+            }
+            
+            LOG.info("No focused project found, using first: ${projects.firstOrNull()?.name}")
             return projects.firstOrNull()
         }
         
         // Otherwise, use invokeAndWait to check on EDT
         var result: Project? = null
         ApplicationManager.getApplication().invokeAndWait({
-            // Try to get the project with focus
+            // First, try to get the project whose window has OS focus
             for (project in projects) {
-                val windowManager = ToolWindowManager.getInstance(project)
-                if (windowManager.isEditorComponentActive) {
+                val frame = WindowManager.getInstance().getFrame(project)
+                if (frame?.isFocused == true) {
+                    LOG.info("Found focused project window: ${project.name}")
                     result = project
                     return@invokeAndWait
                 }
             }
-            // Fallback to first open project
+            
+            // Fallback: try to get the project with active editor component
+            for (project in projects) {
+                val toolWindowManager = ToolWindowManager.getInstance(project)
+                if (toolWindowManager.isEditorComponentActive) {
+                    LOG.info("Found project with active editor: ${project.name}")
+                    result = project
+                    return@invokeAndWait
+                }
+            }
+            
+            // Final fallback to first open project
+            LOG.info("No focused project found, using first: ${projects.firstOrNull()?.name}")
             result = projects.firstOrNull()
         }, ModalityState.any())
         return result
