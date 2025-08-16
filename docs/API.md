@@ -401,6 +401,84 @@ API version is included in the health check response. The API is backward compat
 
 Current version: 1.1.3
 
+## State Queries and Conditional Execution
+
+### Tool Window State Differences
+
+Based on the code implementation, here are the key differences between the three tool window states:
+
+#### 1. Visible (`<window>:window`)
+
+```kotlin
+toolWindow?.isVisible == true
+```
+- **What it means**: The tool window is displayed on screen
+- **When true**: The tool window is open and shown (either docked, floating, or windowed)
+- **When false**: The tool window is closed/hidden
+- **Example**: Project view is open on the left side of the IDE
+
+#### 2. Active (`<window>:active`)
+
+```kotlin
+toolWindow?.isActive == true
+```
+- **What it means**: The tool window is the currently selected tool window
+- **When true**: The tool window's tab is selected/highlighted (but focus might be elsewhere)
+- **When false**: Another tool window is selected or no tool window is active
+- **Example**: You clicked on the Terminal tab, making it the active tool window, but your cursor is still in the editor
+
+#### 3. Focused (`focusInToolWindow:<id>` or `<window>:focus`)
+
+```kotlin
+getFocusedToolWindow(project) == toolWindowId
+```
+- **What it means**: Keyboard focus is actually inside the tool window's content area
+- **When true**: The cursor/keyboard input is actively in that tool window
+- **When false**: Focus is elsewhere (editor, another tool window, etc.)
+- **Example**: Your cursor is blinking in the Terminal, ready to type commands
+
+#### Visual Example
+
+```
+IDE Layout:
+┌─────────────────────────────────────┐
+│ [Project] [Structure] [Terminal]    │  <- Tool window tabs
+├─────────────────────────────────────┤
+│ Project View │  Editor              │
+│   > src      │  class Main {        │
+│   > test     │    public static ... │  <- Cursor here
+│              │  }                   │
+└─────────────────────────────────────┘
+
+In this state:
+- Project: visible=true, active=true, focused=false
+- Terminal: visible=false, active=false, focused=false
+- Editor has focus (cursor is there)
+```
+
+#### Practical Usage
+
+```bash
+# Check if Terminal is shown on screen
+ij --if Terminal:window --then "..."
+
+# Check if Terminal is the selected tool window
+ij --if Terminal:active --then "..."
+
+# Check if cursor/focus is in Terminal
+ij --if Terminal:focus --then "..."
+# Or equivalently:
+ij --if focusInToolWindow:Terminal --then "..."
+```
+
+#### Key Relationships
+
+- **Focused** → implies **Active** → implies **Visible**
+- A tool window can be **visible** but not **active** (another tool window is selected)
+- A tool window can be **active** but not **focused** (selected but cursor is in editor)
+- Only one tool window can be **focused** at a time
+- Multiple tool windows can be **visible** simultaneously
+
 ## Support
 
 - [GitHub Issues](https://github.com/arabshapt/intellij-action-executor/issues)
