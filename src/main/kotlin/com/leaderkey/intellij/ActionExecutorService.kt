@@ -24,6 +24,7 @@ import com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode
 import com.intellij.ide.DataManager
 import com.intellij.openapi.wm.IdeFocusManager
 import javax.swing.SwingUtilities
+import java.awt.Component
 
 @Service
 class ActionExecutorService {
@@ -106,6 +107,14 @@ class ActionExecutorService {
                     // Get project and create data context on EDT
                     val project = getActiveProject()
                     LOG.info("Active project: ${project?.name ?: "null"}")
+                    
+                    // Special handling for focus-switching actions
+                    if (isFocusSwitchingAction(actionId)) {
+                        LOG.info("Detected focus-switching action: $actionId")
+                        handleFocusSwitchingAction(actionId, project)
+                        executionResult = ExecutionResult(true, actionId, "Focus switching action triggered")
+                        return@Runnable
+                    }
                     
                     // Get live data context from focused component or fallback to synthetic
                     val dataContext = getLiveDataContext(project)
@@ -244,6 +253,139 @@ class ActionExecutorService {
     private fun isUIAction(actionId: String): Boolean {
         // Delegate to ActionCategorizer for consistency
         return ActionCategorizer.isUIAction(actionId)
+    }
+    
+    private fun isFocusSwitchingAction(actionId: String): Boolean {
+        return actionId in listOf(
+            "FocusEditor",
+            "EditorEscape",
+            "Terminal.MoveToEditor",
+            "Terminal.Escape",
+            "JumpToLastWindow",
+            "HideActiveWindow",
+            "HideAllWindows"
+        )
+    }
+    
+    private fun handleFocusSwitchingAction(actionId: String, project: Project?) {
+        if (project == null) {
+            LOG.warn("Cannot handle focus switching without a project")
+            return
+        }
+        
+        val focusService = FocusManagementService.getInstance()
+        
+        // Log current focus state before action
+        focusService.logFocusState(project)
+        
+        ApplicationManager.getApplication().invokeLater {
+            val toolWindowManager = ToolWindowManager.getInstance(project)
+            val focusManager = IdeFocusManager.getInstance(project)
+            
+            when (actionId) {
+                "FocusEditor" -> {
+                    // Universal focus editor action - works from anywhere
+                    LOG.info("FocusEditor: Universal focus to editor action")
+                    val editor = FileEditorManager.getInstance(project).selectedTextEditor
+                    
+                    if (editor != null) {
+                        // Editor exists, just focus it
+                        val success = focusService.focusEditor(project, true)
+                        if (success) {
+                            LOG.info("FocusEditor: Successfully focused existing editor")
+                        } else {
+                            LOG.warn("FocusEditor: Failed to focus editor, trying fallback")
+                            // Try using JumpToLastWindow as fallback
+                            focusService.toggleBetweenEditorAndLastToolWindow(project)
+                        }
+                    } else {
+                        // No editor open, try to open recent file
+                        LOG.info("FocusEditor: No editor open, trying to open recent file")
+                        val recentFiles = FileEditorManager.getInstance(project).openFiles
+                        if (recentFiles.isNotEmpty()) {
+                            FileEditorManager.getInstance(project).openFile(recentFiles[0], true)
+                            LOG.info("FocusEditor: Opened recent file: ${recentFiles[0].name}")
+                        } else {
+                            // No files available, just try to focus the editor area
+                            LOG.info("FocusEditor: No files available, focusing editor area")
+                            focusService.focusEditor(project, true)
+                        }
+                    }
+                }
+                
+                "Terminal.MoveToEditor", "Terminal.Escape" -> {
+                    // Move focus from terminal to editor using FocusManagementService
+                    LOG.info("Moving focus from terminal to editor using FocusManagementService")
+                    val success = focusService.switchFocusFromTerminalToEditor(project)
+                    if (!success) {
+                        LOG.warn("Failed to switch focus from terminal to editor")
+                        // Fallback: try to focus editor directly
+                        focusService.focusEditor(project, true)
+                    }
+                }
+                
+                "EditorEscape" -> {
+                    // EditorEscape should close popups and potentially return focus to editor
+                    LOG.info("Handling EditorEscape")
+                    val focusOwner = focusManager.focusOwner
+                    
+                    // First try to execute the actual EditorEscape action with proper context
+                    val actionManager = ActionManager.getInstance()
+                    val escapeAction = actionManager.getAction("EditorEscape")
+                    if (escapeAction != null && focusOwner != null) {
+                        val dataContext = DataManager.getInstance().getDataContext(focusOwner)
+                        val event = AnActionEvent(
+                            null,
+                            dataContext,
+                            ActionPlaces.KEYBOARD_SHORTCUT,
+                            Presentation(),
+                            actionManager,
+                            0
+                        )
+                        ActionUtil.performDumbAwareUpdate(escapeAction, event, true)
+                        if (event.presentation.isEnabled) {
+                            ActionUtil.invokeAction(escapeAction, dataContext, ActionPlaces.KEYBOARD_SHORTCUT, null, null)
+                            LOG.info("EditorEscape action executed with proper context")
+                            return@invokeLater
+                        }
+                    }
+                    
+                    // Fallback: ensure editor has focus using FocusManagementService
+                    focusService.focusEditor(project, true)
+                }
+                
+                "JumpToLastWindow" -> {
+                    // Toggle between editor and last tool window using FocusManagementService
+                    LOG.info("Toggling between editor and last tool window")
+                    focusService.toggleBetweenEditorAndLastToolWindow(project)
+                }
+                
+                "HideActiveWindow" -> {
+                    val activeToolWindow = toolWindowManager.activeToolWindowId
+                    if (activeToolWindow != null) {
+                        toolWindowManager.getToolWindow(activeToolWindow)?.hide(null)
+                        LOG.info("Hidden active tool window: $activeToolWindow")
+                        // Focus editor after hiding
+                        focusService.focusEditor(project, true)
+                    }
+                }
+                
+                "HideAllWindows" -> {
+                    toolWindowManager.toolWindowIds.forEach { id ->
+                        toolWindowManager.getToolWindow(id)?.hide(null)
+                    }
+                    LOG.info("Hidden all tool windows")
+                    // Focus editor after hiding all using FocusManagementService
+                    focusService.focusEditor(project, true)
+                }
+            }
+            
+            // Log focus state after action with a small delay to let UI update
+            ApplicationManager.getApplication().invokeLater {
+                Thread.sleep(200)
+                focusService.logFocusState(project)
+            }
+        }
     }
     
     fun executeActions(actionIds: List<String>, delayMs: Long = -1): List<ExecutionResult> {
@@ -447,7 +589,21 @@ class ActionExecutorService {
         val focusOwner = IdeFocusManager.getInstance(project).focusOwner
         if (focusOwner != null) {
             LOG.info("Got live context from focused component: ${focusOwner.javaClass.simpleName}")
-            return DataManager.getInstance().getDataContext(focusOwner)
+            val context = DataManager.getInstance().getDataContext(focusOwner)
+            
+            // Enhanced logging for terminal focus debugging
+            val toolWindowManager = ToolWindowManager.getInstance(project)
+            val activeToolWindow = toolWindowManager.activeToolWindowId
+            val terminalWindow = toolWindowManager.getToolWindow("Terminal")
+            LOG.info("Active tool window: $activeToolWindow, Terminal visible: ${terminalWindow?.isVisible}, Terminal active: ${terminalWindow?.isActive}")
+            
+            // Check if focus is in terminal and enhance context if needed
+            if (isTerminalFocused(project, focusOwner)) {
+                LOG.info("Terminal is focused, enhancing context for terminal actions")
+                return enhanceTerminalContext(context, project)
+            }
+            
+            return context
         }
         
         // Try async focus context
@@ -465,6 +621,37 @@ class ActionExecutorService {
         // Fallback to synthetic context (for headless/testing)
         LOG.info("No focused component found, using synthetic context as fallback")
         return createComprehensiveDataContext(project)
+    }
+    
+    private fun isTerminalFocused(project: Project, focusOwner: Component): Boolean {
+        val toolWindowManager = ToolWindowManager.getInstance(project)
+        val terminalWindow = toolWindowManager.getToolWindow("Terminal") ?: return false
+        return SwingUtilities.isDescendingFrom(focusOwner, terminalWindow.component)
+    }
+    
+    private fun enhanceTerminalContext(baseContext: DataContext, project: Project): DataContext {
+        // Create an enhanced context that includes terminal-specific data
+        val builder = SimpleDataContext.builder()
+        
+        // Copy essential data from base context
+        // We can't copy all keys due to type safety, so copy the important ones
+        baseContext.getData(CommonDataKeys.PROJECT)?.let { builder.add(CommonDataKeys.PROJECT, it) }
+        baseContext.getData(CommonDataKeys.EDITOR)?.let { builder.add(CommonDataKeys.EDITOR, it) }
+        baseContext.getData(CommonDataKeys.VIRTUAL_FILE)?.let { builder.add(CommonDataKeys.VIRTUAL_FILE, it) }
+        baseContext.getData(CommonDataKeys.PSI_FILE)?.let { builder.add(CommonDataKeys.PSI_FILE, it) }
+        baseContext.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.let { builder.add(CommonDataKeys.VIRTUAL_FILE_ARRAY, it) }
+        baseContext.getData(PlatformDataKeys.CONTEXT_COMPONENT)?.let { builder.add(PlatformDataKeys.CONTEXT_COMPONENT, it) }
+        
+        // Ensure project is set
+        builder.add(CommonDataKeys.PROJECT, project)
+        
+        // Add terminal tool window reference
+        val terminalWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
+        terminalWindow?.let {
+            builder.add(PlatformDataKeys.TOOL_WINDOW, it)
+        }
+        
+        return builder.build()
     }
     
     private fun getCurrentEditor(project: Project?): Editor? {
