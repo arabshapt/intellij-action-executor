@@ -262,8 +262,7 @@ class ActionExecutorService {
             "Terminal.MoveToEditor",
             "Terminal.Escape",
             "JumpToLastWindow",
-            "HideActiveWindow",
-            "HideAllWindows"
+            "HideActiveWindow"
         )
     }
     
@@ -368,15 +367,6 @@ class ActionExecutorService {
                         // Focus editor after hiding
                         focusService.focusEditor(project, true)
                     }
-                }
-                
-                "HideAllWindows" -> {
-                    toolWindowManager.toolWindowIds.forEach { id ->
-                        toolWindowManager.getToolWindow(id)?.hide(null)
-                    }
-                    LOG.info("Hidden all tool windows")
-                    // Focus editor after hiding all using FocusManagementService
-                    focusService.focusEditor(project, true)
                 }
             }
             
