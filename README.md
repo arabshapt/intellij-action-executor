@@ -1,6 +1,6 @@
 # IntelliJ Action Executor
 
-[![Version](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -12,21 +12,24 @@ launchers, and automation workflows
 - 🚀 **REST API** for executing IntelliJ actions
 - ⚡ **Zero-latency execution** - actions trigger instantly
 - 🔗 **Chain multiple actions** in a single request
+- 🔀 **Conditional Execution** - Execute actions based on IDE state (editor open, file type, etc.)
 - 🎯 **Simple HTTP interface** - works with any HTTP client
 - 🛠️ **CLI tool included** for terminal usage
 - 🔌 **Perfect integration** with [LeaderKey](https://github.com/arabshapt/LeaderKey.app), Keyboard Maestro, Karabiner,
   Alfred, etc.
 - 🚫 **No rate limiting** - Custom server bypasses IntelliJ's 429 errors (v1.0.8+)
 
-## 🆕 What's New in v1.1.4
+## 🆕 What's New in v1.2.1
 
-### Improved Context Handling
+### Expanded Compatibility
+- **2025.1+ Support** - Fixed compatibility with IntelliJ IDEA 2025.1 EAP builds (up to build 255.*)
 
-- **Live DataContext** - Actions now receive context from the currently focused component instead of a static snapshot
-- **Fixed Tree Navigation** - Tree navigation actions (Tree-selectFirst, Tree-selectNext) now work correctly in action
-  chains
-- **Better Context-Dependent Actions** - Git.CompareWithBranch and similar actions now operate on the correct selection
-- **Universal Solution** - All actions benefit from improved context resolution without special handling
+### Conditional Action Execution System (v1.2.0)
+
+- **Smart Logic** - Execute actions only when specific conditions are met (e.g., if editor is open, if file is Java)
+- **Chain Operators** - Use pipes (`|`) for OR fallbacks and commas (`,`) for sequential execution
+- **State Queries** - Check if actions are enabled, if specific tool windows are active, or if files have unsaved changes
+- **CLI Power** - New flags like `-ie` (if-editor), `-if` (if-file), and `--then`/`--else` branches
 
 ## 🎯 Quick Start
 
@@ -37,13 +40,16 @@ curl "http://localhost:63342/api/intellij-actions/execute?action=ReformatCode"
 
 # Or with the included CLI:
 ~/ij ReformatCode
+
+# Conditional execution (v1.2.0+):
+~/ij -ie --then SaveAll --else OpenFile
 ```
 
 ## 📦 Installation
 
 ### Option 1: Install from JAR (Recommended)
 
-1. Download the latest `intellijPlugin-1.1.4.zip`
+1. Download the latest `intellij-action-executor-1.2.1.zip`
    from [Releases](https://github.com/arabshapt/intellij-action-executor/releases)
 2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk...`
 3. Select the downloaded ZIP file
@@ -97,6 +103,25 @@ curl "http://localhost:63342/api/intellij-actions/execute?actions=SaveAll,Reform
 
 # Multiple actions
 ~/ij SaveAll ReformatCode OptimizeImports
+```
+
+#### Conditional Execution (v1.2.0+)
+
+```bash
+# If editor is open, save all; otherwise open file
+~/ij -ie --then SaveAll --else OpenFile
+
+# If Git action is enabled, pull then push
+~/ij -ia Git.Pull --then Git.Pull,Git.Push
+
+# OR Fallback: Try Git Pull, if fails (or disabled), try Git Fetch, then Show Settings
+~/ij Git.Pull | Git.Fetch | ShowSettings
+
+# Check if file has modifications (unsaved changes)
+~/ij --if hasModifications --then SaveAll
+
+# Check if indexing is in progress
+~/ij --if !isIndexing --then Build
 ```
 
 ### LeaderKey.app Configuration

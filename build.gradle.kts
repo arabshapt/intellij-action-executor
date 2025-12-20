@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.leaderkey"
-version = "1.2.0"
+version = "1.2.1"
 
 repositories {
     mavenCentral()
@@ -36,7 +36,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("241")
-        untilBuild.set("251.*")
+        untilBuild.set("255.*")
     }
 
     signPlugin {
@@ -47,5 +47,9 @@ tasks {
 
     publishPlugin {
         token.set(System.getenv("PUBLISH_TOKEN"))
+    }
+
+    runPluginVerifier {
+        ideVersions.set(listOf("2024.1", "LATEST-EAP-SNAPSHOT"))
     }
 }

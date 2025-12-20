@@ -2,6 +2,11 @@
 
 All notable changes to the IntelliJ Action Executor plugin will be documented in this file.
 
+## [1.2.1] - 2025-12-20
+
+### Fixed
+- **Compatibility**: Expanded compatibility range to support IntelliJ IDEA 2025.1+ EAP builds (untilBuild 255.*)
+
 ## [1.2.0] - 2025-08-16
 
 ### Added
