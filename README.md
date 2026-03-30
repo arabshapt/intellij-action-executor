@@ -1,6 +1,6 @@
 # IntelliJ Action Executor
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/arabshapt/intellij-action-executor/releases)
 [![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2024.1+-green.svg)](https://www.jetbrains.com/idea/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -19,7 +19,15 @@ launchers, and automation workflows
   Alfred, etc.
 - 🚫 **No rate limiting** - Custom server bypasses IntelliJ's 429 errors (v1.0.8+)
 
-## 🆕 What's New in v1.2.1
+## 🆕 What's New in v1.3.0
+
+### Unix Domain Socket Server
+- **Zero-overhead IPC** — New UDS server at `/tmp/intellij-leaderkey.sock` eliminates HTTP handshake (~1ms vs ~50ms)
+- **LeaderKey native integration** — LeaderKey's `intellij` action type connects directly to the socket, no shell spawn needed
+- **Same JSON protocol** as HTTP: `{"action":"SaveAll"}` or `{"actions":"SaveAll,ReformatCode","delay":100}`
+- **HTTP server unchanged** — port 63343 still works for CLI/scripts
+
+## What's New in v1.2.1
 
 ### Expanded Compatibility
 - **2025.1+ Support** - Fixed compatibility with IntelliJ IDEA 2025.1 EAP builds (up to build 255.*)
@@ -124,9 +132,33 @@ curl "http://localhost:63342/api/intellij-actions/execute?actions=SaveAll,Reform
 ~/ij --if !isIndexing --then Build
 ```
 
-### LeaderKey.app Configuration
+### Unix Domain Socket (v1.3.0+)
 
-In LeaderKey, configure shell commands:
+Direct low-latency IPC — no HTTP overhead:
+
+```bash
+# Single action
+echo '{"action":"SaveAll"}' | nc -U /tmp/intellij-leaderkey.sock
+
+# Multiple actions (comma-separated, optional delay in ms)
+echo '{"actions":"SaveAll,ReformatCode,OptimizeImports","delay":100}' | nc -U /tmp/intellij-leaderkey.sock
+```
+
+The socket is created when the plugin starts and deleted on shutdown.
+
+### LeaderKey.app Configuration (v1.3.0+ native integration)
+
+Use the `intellij` action type in LeaderKey for direct UDS communication:
+
+```json
+{"key": "s", "type": "intellij", "value": "SaveAll", "label": "Save All"}
+{"key": "f", "type": "intellij", "value": "ReformatCode,OptimizeImports", "label": "Format"}
+{"key": "r", "type": "intellij", "value": "Run", "label": "Run"}
+```
+
+### LeaderKey.app Configuration (legacy URL scheme)
+
+For older LeaderKey versions, configure shell commands:
 
 ```json
 {
@@ -380,9 +412,17 @@ curl http://localhost:63343/api/intellij-actions/list
 
 ### Building the Plugin
 
+Requires Java 21 (Gradle + IntelliJ plugin toolchain doesn't support Java 25+):
+
 ```bash
+# With system Java 21
 ./gradlew clean buildPlugin
+
+# If system Java is newer (22+), specify Java 21 explicitly
+JAVA_HOME=/Users/arabshaptukaev/Library/Java/JavaVirtualMachines/temurin-21.0.7/Contents/Home ./gradlew build
 ```
+
+Output: `build/distributions/intellij-action-executor-X.Y.Z.zip`
 
 ### Running IDE with Plugin
 

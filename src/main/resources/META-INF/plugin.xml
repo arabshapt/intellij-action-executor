@@ -42,6 +42,7 @@
         <!-- Register application services -->
         <applicationService serviceImplementation="com.leaderkey.intellij.ActionExecutorService"/>
         <applicationService serviceImplementation="com.leaderkey.intellij.CustomHttpServerService"/>
+        <applicationService serviceImplementation="com.leaderkey.intellij.UnixSocketServerService"/>
         
         <!-- Register startup activity for custom HTTP server -->
         <postStartupActivity implementation="com.leaderkey.intellij.PluginStartup"/>
